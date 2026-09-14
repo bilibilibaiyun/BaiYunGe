@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <AssemblyName>BaiYunGe</AssemblyName>
+    <RootNamespace>BaiYunGe</RootNamespace>
+    <Version>2.0.0</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>zh-CN;en-US</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 唯一第三方依赖：NAudio（WASAPI 录音与 WAV 写入） -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- 只用 WinForms 的 NotifyIcon，移除其 implicit using 以避免与 WPF 控件类型歧义 -->
+    <Using Remove="System.Windows.Forms" />
+    <!-- WindowsDesktop SDK 的 implicit usings 不包含 System.IO / System.Net.Http，显式补全 -->
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 内置 llama.cpp 引擎运行时，随输出/发布复制 -->
+    <None Include="..\..\engine\llama-server\**\*"
+          Link="engine\llama-server\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <!-- 内置测试音频（test-pipeline 调试用） -->
+    <Content Include="Assets\test-audio.wav"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <!-- 应用图标（程序图标/托盘/窗口标题栏） -->
+    <Content Include="Assets\app.ico"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\app-square.png"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

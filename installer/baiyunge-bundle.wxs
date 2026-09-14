@@ -1,0 +1,32 @@
+<Wix
+    xmlns="http://wixtoolset.org/schemas/v4/wxs"
+    xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+    <Bundle
+        Name="BaiYunGe"
+        Version="1.0.2.0"
+        Manufacturer="BaiYunGe"
+        UpgradeCode="C57F47A5-7BC6-4B58-8F29-2E6A6D37F5F1"
+        Compressed="yes">
+
+        <BootstrapperApplication SourceFile="artifacts\bootstrapper-publish\BaiYunGe.Bootstrapper.exe" />
+
+        <Variable Name="InstallLanguage" Type="string" Value="zh-CN" />
+
+        <Chain>
+            <MsiPackage
+                Id="BaiYunGe_zhCN"
+                CacheId="BaiYunGe-zh-CN-1.0.2"
+                SourceFile="artifacts\BaiYunGe_1.0.2_zh-CN_x64.msi"
+                bal:DisplayInternalUICondition="0"
+                InstallCondition="InstallLanguage = &quot;zh-CN&quot;"
+                Vital="yes" />
+            <MsiPackage
+                Id="BaiYunGe_enUS"
+                CacheId="BaiYunGe-en-US-1.0.2"
+                SourceFile="artifacts\BaiYunGe_1.0.2_en-US_x64.msi"
+                bal:DisplayInternalUICondition="0"
+                InstallCondition="InstallLanguage = &quot;en-US&quot;"
+                Vital="yes" />
+        </Chain>
+    </Bundle>
+</Wix>

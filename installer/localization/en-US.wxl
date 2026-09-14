@@ -1,0 +1,6 @@
+<WixLocalization
+    Culture="en-US"
+    xmlns="http://wixtoolset.org/schemas/v4/wxl">
+    <String Id="ProductName" Overridable="yes" Value="BaiYunGe" />
+    <String Id="DowngradeErrorMessage" Overridable="yes" Value="A newer version of BaiYunGe is already installed." />
+</WixLocalization>

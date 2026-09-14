@@ -1,0 +1,70 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+    <Package
+        Name="!(loc.ProductName)"
+        Manufacturer="BaiYunGe"
+        ProductCode="99346DC1-3B34-4740-958D-C4378D00A039"
+        Version="1.0.2"
+        UpgradeCode="9A7E5C6B-CB45-4F42-9B7E-3C30F5F1AA01"
+        Scope="perMachine"
+        InstallerVersion="500"
+        Compressed="yes">
+
+        <MajorUpgrade
+            DowngradeErrorMessage="!(loc.DowngradeErrorMessage)" />
+
+        <MediaTemplate EmbedCab="yes" />
+
+        <Property Id="INSTALLFOLDER" Value="D:\BaiYunGe" />
+        <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+        <ui:WixUI Id="WixUI_InstallDir" />
+
+        <CustomAction
+            Id="CloseBaiYunGeApp"
+            Execute="immediate"
+            Directory="TARGETDIR"
+            ExeCommand="taskkill.exe /IM BaiYunGe.exe /T /F"
+            Return="ignore" />
+
+        <InstallExecuteSequence>
+            <Custom Action="CloseBaiYunGeApp" After="InstallValidate" Condition="NOT Installed" />
+        </InstallExecuteSequence>
+
+        <StandardDirectory Id="ProgramFiles64Folder">
+            <Directory Id="INSTALLFOLDER" Name="BaiYunGe" />
+        </StandardDirectory>
+
+        <StandardDirectory Id="ProgramMenuFolder">
+            <Directory Id="ApplicationProgramsFolder" Name="!(loc.ProductName)" />
+        </StandardDirectory>
+
+        <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+            <Files Include="D:\Codex Work\BaiYunGe\artifacts\publish\**" />
+        </ComponentGroup>
+
+        <ComponentGroup Id="ShortcutComponents" Directory="ApplicationProgramsFolder">
+            <Component Id="ApplicationShortcut" Guid="BC2FB5F5-5C64-4B2A-9C88-CA6B48FCD712">
+                <Shortcut
+                    Id="BaiYunGeShortcut"
+                    Name="!(loc.ProductName)"
+                    Description="!(loc.ProductName)"
+                    Target="[INSTALLFOLDER]BaiYunGe.exe"
+                    WorkingDirectory="INSTALLFOLDER" />
+                <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+                <RegistryValue
+                    Root="HKCU"
+                    Key="Software\BaiYunGe"
+                    Name="Installed"
+                    Type="integer"
+                    Value="1"
+                    KeyPath="yes" />
+            </Component>
+        </ComponentGroup>
+
+        <Feature Id="MainFeature" Title="!(loc.ProductName)" Level="1">
+            <ComponentGroupRef Id="ProductComponents" />
+            <ComponentGroupRef Id="ShortcutComponents" />
+        </Feature>
+    </Package>
+</Wix>

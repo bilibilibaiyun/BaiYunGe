@@ -1,0 +1,41 @@
+<Window x:Class="BaiYunGe.UI.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BaiYunGe Overlay"
+        Width="320" Height="120"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ShowActivated="False"
+        SizeToContent="WidthAndHeight"
+        ResizeMode="NoResize">
+    <Border x:Name="Card"
+            Margin="0"
+            CornerRadius="12"
+            Background="{DynamicResource Theme.CardBg}"
+            BorderBrush="{DynamicResource Theme.Border}"
+            BorderThickness="1"
+            Padding="20,16">
+        <StackPanel>
+            <TextBlock x:Name="StatusText"
+                       FontSize="15"
+                       Foreground="{DynamicResource Theme.TextPrimary}"
+                       TextWrapping="Wrap"
+                       MaxWidth="420"
+                       HorizontalAlignment="Left" />
+            <ProgressBar x:Name="LevelBar"
+                         Height="4"
+                         Margin="0,12,0,0"
+                         Minimum="0" Maximum="1"
+                         Foreground="{DynamicResource Theme.Accent}"
+                         Background="{DynamicResource Theme.Border}" />
+            <TextBlock x:Name="TimeText"
+                       FontSize="11"
+                       Foreground="{DynamicResource Theme.TextSecondary}"
+                       Margin="0,6,0,0"
+                       HorizontalAlignment="Left" />
+        </StackPanel>
+    </Border>
+</Window>

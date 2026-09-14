@@ -1,0 +1,33 @@
+# 构建产物
+bin/
+obj/
+artifacts/
+publish/
+
+# 本地工具链与临时
+.tools/
+.tmp/
+.wix/
+
+# 内置 llama.cpp 引擎运行时（体积大，随安装包分发，见 Release）
+engine/
+
+# 旧版归档与参考项目（仅本地参考）
+src-legacy/
+tests-legacy/
+reference/
+
+# 本地运行数据与测试数据
+.data/
+.data-en/
+.first-run-smoke/
+.test-data/
+testdata/
+.qa_*.log
+
+# IDE / 系统
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db

@@ -1,0 +1,6 @@
+<WixLocalization
+    Culture="zh-CN"
+    xmlns="http://wixtoolset.org/schemas/v4/wxl">
+    <String Id="ProductName" Overridable="yes" Value="白云歌" />
+    <String Id="DowngradeErrorMessage" Overridable="yes" Value="已安装更新版本的白云歌。" />
+</WixLocalization>
