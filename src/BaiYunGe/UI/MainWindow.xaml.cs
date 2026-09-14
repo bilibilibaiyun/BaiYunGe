@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private ComboBox? _themeCombo;
     private ComboBox? _micCombo;
     private ComboBox? _deviceCombo;
+    private ComboBox? _recognitionLangCombo;
     private TextBox? _shortcutBox;
     private ComboBox? _modeCombo;
     private CheckBox? _dictEnabled;
@@ -128,6 +129,7 @@ public partial class MainWindow : Window
             {
                 _settings.Theme = theme;
                 Save();
+                SettingsChanged?.Invoke();
             }
         };
         SelectCombo(_themeCombo, _settings.Theme);
@@ -147,6 +149,23 @@ public partial class MainWindow : Window
         };
         SelectCombo(_deviceCombo, _settings.InferenceDevice);
         panel.Children.Add(_deviceCombo);
+
+        panel.Children.Add(Label(_text.Get("General.RecognitionLanguage")));
+        _recognitionLangCombo = new ComboBox();
+        _recognitionLangCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.LangAuto"), Tag = "auto" });
+        _recognitionLangCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.LangZh"), Tag = "zh" });
+        _recognitionLangCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.LangEn"), Tag = "en" });
+        _recognitionLangCombo.SelectionChanged += (_, _) =>
+        {
+            if (_recognitionLangCombo.SelectedItem is ComboBoxItem { Tag: string lang } &&
+                _settings.RecognitionLanguage != lang)
+            {
+                _settings.RecognitionLanguage = lang;
+                Save();
+            }
+        };
+        SelectCombo(_recognitionLangCombo, _settings.RecognitionLanguage);
+        panel.Children.Add(_recognitionLangCombo);
 
         panel.Children.Add(Label(_text.Get("General.Mic")));
         _micCombo = new ComboBox();

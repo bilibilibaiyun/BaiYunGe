@@ -237,10 +237,13 @@ public sealed class RecognitionPipeline : IDisposable
             return cancelled;
         }
 
-        if (!captureResult.HasSpeech)
+        // 能量 VAD 对低电平/降噪麦克风不可靠（语音峰值可低至 -60dB），
+        // 故不做能量门控，仅凭「录音时长」判断是否有内容，交给 llama-server 自行识别。
+        // 录音过短（<0.3s）视为误触丢弃。
+        if (captureResult.Duration < TimeSpan.FromMilliseconds(300))
         {
             _logger.Info(
-                $"No speech: peak={captureResult.PeakRmsDb:F1}dB stopReason={captureResult.StopReason} " +
+                $"Too short: peak={captureResult.PeakRmsDb:F1}dB stopReason={captureResult.StopReason} " +
                 $"duration={captureResult.Duration.TotalSeconds:F1}s");
             CleanupWav();
             var noSpeech = new PipelineResult(string.Empty, false, captureResult.StopReason, OutputResult.Failed, null);
@@ -268,7 +271,10 @@ public sealed class RecognitionPipeline : IDisposable
                 _captureCancellation?.Token ?? CancellationToken.None).ConfigureAwait(false);
 
             var prompt = BuildPrompt(settings);
-            var language = settings.IsEnglish ? "en" : "zh";
+            // 识别语言独立于界面语言，默认 auto 由模型自动检测中英文。
+            var language = string.IsNullOrWhiteSpace(settings.RecognitionLanguage)
+                ? "auto"
+                : settings.RecognitionLanguage;
             var rawText = await _server.TranscribeAsync(
                 captureResult.WavPath,
                 language,

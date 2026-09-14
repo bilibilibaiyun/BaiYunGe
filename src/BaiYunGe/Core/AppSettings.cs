@@ -11,7 +11,11 @@ public sealed record DictionaryEntry
 
 public sealed class AppSettings
 {
+    /// <summary>界面语言。</summary>
     public string Language { get; set; } = "zh-CN";
+
+    /// <summary>识别语言：auto（自动检测）/ zh / en，独立于界面语言。</summary>
+    public string RecognitionLanguage { get; set; } = "auto";
 
     public string Theme { get; set; } = "dark";
 
@@ -64,6 +68,7 @@ public sealed class AppSettings
         return new AppSettings
         {
             Language = Language,
+            RecognitionLanguage = RecognitionLanguage,
             Theme = Theme,
             AutoStart = AutoStart,
             KeyboardShortcut = KeyboardShortcut,

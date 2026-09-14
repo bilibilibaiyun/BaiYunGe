@@ -42,6 +42,10 @@ public sealed class LocalizedText
         ["General.Device"] = ("推理设备", "Inference Device"),
         ["General.DeviceGpu"] = ("GPU 优先（Vulkan）", "GPU first (Vulkan)"),
         ["General.DeviceCpu"] = ("仅 CPU", "CPU only"),
+        ["General.RecognitionLanguage"] = ("识别语言", "Recognition Language"),
+        ["General.LangAuto"] = ("自动检测", "Auto detect"),
+        ["General.LangZh"] = ("中文", "Chinese"),
+        ["General.LangEn"] = ("英文", "English"),
 
         ["Model.Directory"] = ("模型目录", "Model Directory"),
         ["Model.Browse"] = ("浏览", "Browse"),

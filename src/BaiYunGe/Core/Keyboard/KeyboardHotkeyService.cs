@@ -158,8 +158,8 @@ public sealed class KeyboardHotkeyService : IDisposable
             return false;
         }
 
-        // 主键（非 modifier）按下/松开时判断。
-        if (NativeMethods.IsModifier(vkCode))
+        // 纯修饰键（Ctrl/Alt/Shift）不参与主键判定；Win 键允许作主键（Ctrl+Win）。
+        if (NativeMethods.IsCtrlAltShift(vkCode))
         {
             return false;
         }
@@ -177,7 +177,9 @@ public sealed class KeyboardHotkeyService : IDisposable
         }
 
         var mods = NativeMethods.ModifierState();
-        if (!hotkey.Matches(mods.Ctrl, mods.Alt, mods.Shift, mods.Win, vkCode))
+        // Win 键作为主键时，其自身的按下状态不应再计为修饰键。
+        var winModifier = mods.Win && !NativeMethods.IsWinKey(vkCode);
+        if (!hotkey.Matches(mods.Ctrl, mods.Alt, mods.Shift, winModifier, vkCode))
         {
             return false;
         }
@@ -259,18 +261,20 @@ public sealed class KeyboardHotkeyService : IDisposable
 
     private bool TryCaptureRecordedHotkey(int vkCode)
     {
-        if (NativeMethods.IsModifier(vkCode))
+        // 纯修饰键（Ctrl/Alt/Shift）不能作主键；Win 键允许作主键（如 Ctrl+Win）。
+        if (NativeMethods.IsCtrlAltShift(vkCode))
         {
             return false;
         }
 
         var mods = NativeMethods.ModifierState();
+        var isWinKey = NativeMethods.IsWinKey(vkCode);
         var captured = new HotkeyDefinition
         {
             Ctrl = mods.Ctrl,
             Alt = mods.Alt,
             Shift = mods.Shift,
-            Win = mods.Win,
+            Win = mods.Win && !isWinKey, // Win 作为主键时，不再同时算作修饰键
             Key = vkCode
         };
 

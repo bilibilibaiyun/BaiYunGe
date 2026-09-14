@@ -113,6 +113,8 @@ public sealed record HotkeyDefinition
             0x0D => "Enter",
             0x1B => "Esc",
             0x20 => "Space",
+            0x5B => "Win",
+            0x5C => "Win",
             0x21 => "PageUp",
             0x22 => "PageDown",
             0x23 => "End",

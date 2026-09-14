@@ -55,6 +55,18 @@ internal static class NativeMethods
         return vkCode is VK_LCONTROL or VK_RCONTROL or VK_LSHIFT or VK_RSHIFT or VK_LMENU or VK_RMENU or VK_LWIN or VK_RWIN;
     }
 
+    /// <summary>纯修饰键（Ctrl/Alt/Shift），不可作为主键。</summary>
+    public static bool IsCtrlAltShift(int vkCode)
+    {
+        return vkCode is VK_LCONTROL or VK_RCONTROL or VK_LSHIFT or VK_RSHIFT or VK_LMENU or VK_RMENU;
+    }
+
+    /// <summary>Win 键（可作为修饰键，也可作为主键，如 Ctrl+Win）。</summary>
+    public static bool IsWinKey(int vkCode)
+    {
+        return vkCode is VK_LWIN or VK_RWIN;
+    }
+
     public static (bool Ctrl, bool Alt, bool Shift, bool Win) ModifierState()
     {
         static bool Down(int vk) => (GetKeyState(vk) & 0x8000) != 0;
