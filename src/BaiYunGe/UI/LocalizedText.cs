@@ -57,8 +57,8 @@ public sealed class LocalizedText
         ["Dict.Add"] = ("添加", "Add"),
         ["Dict.Remove"] = ("删除", "Remove"),
 
-        ["Overlay.Listening"] = ("聆听中…", "Listening…"),
-        ["Overlay.Transcribing"] = ("识别中…", "Transcribing…"),
+        ["Overlay.Listening"] = ("倾听中…", "Listening…"),
+        ["Overlay.Transcribing"] = ("转化中…", "Transcribing…"),
         ["Overlay.Done"] = ("已输入", "Done"),
         ["Overlay.Copied"] = ("已复制到剪贴板", "Copied to clipboard"),
         ["Overlay.NoSpeech"] = ("未检测到语音", "No speech detected"),

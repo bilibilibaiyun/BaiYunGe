@@ -205,6 +205,10 @@ public partial class App : Application
                 // StageChanged 经 ThreadPool 在后台线程派发，WPF 控件必须切回 UI 线程。
                 Dispatcher.Invoke(ShowOverlay);
                 break;
+            case PipelineStage.Transcribing:
+                // 录音结束进入转写：弹窗切换到「转化中」。
+                Dispatcher.Invoke(() => _overlay?.ShowMessage(_text!.Get("Overlay.Transcribing")));
+                break;
             case PipelineStage.Idle:
                 // 结束后由 Completed 事件决定是否隐藏。
                 break;
