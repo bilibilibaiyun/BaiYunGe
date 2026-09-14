@@ -27,7 +27,10 @@ public sealed class VoiceActivityDetector
 
     public VoiceActivityDetector(int sensitivity, int silenceStopMs)
     {
-        _silenceStopMs = Math.Max(200, silenceStopMs);
+        // silenceStopMs <= 0 表示禁用静音自动停止（hold 模式：按住即录音，仅松开键停止）。
+        _silenceStopMs = silenceStopMs <= 0
+            ? double.PositiveInfinity
+            : Math.Max(200, silenceStopMs);
         // 语音判定阈值下限：降噪麦克风电平偏低，阈值相应下调。
         _speechFloorDb = sensitivity switch
         {

@@ -116,11 +116,14 @@ public sealed class RecognitionPipeline : IDisposable
 
         try
         {
+            // hold 模式：按住即录音，静音不自动停止（仅松开键停止）；toggle 模式才启用静音自动停止。
+            var silenceStopMs = settings.KeyboardMode == "toggle" ? settings.SilenceStopMs : 0;
+
             _captureTask = _audioCapture.StartAsync(
                 settings.MicDeviceId,
                 _wavPath,
-                0, // 0 = 不限录音时长，仅靠静音超时/松开按键结束。
-                settings.SilenceStopMs,
+                0, // 0 = 不限录音时长。
+                silenceStopMs,
                 settings.VadSensitivity,
                 _captureCancellation.Token);
 

@@ -105,11 +105,54 @@ public partial class App : Application
 
         _logger.Info("BaiYunGe ready.");
 
+        // 模型就绪时后台预热 llama-server，消除首次识别的冷启动延迟（约 5 秒加载模型）。
+        WarmupServerInBackground();
+
         // 首次运行自动弹设置（选择模型目录）。
         if (string.IsNullOrWhiteSpace(_settings.ModelDirectory) || args.ContainsKey("--settings"))
         {
             ShowSettings();
         }
+    }
+
+    /// <summary>
+    /// 后台静默预热 llama-server：模型目录已配置且确有 gguf 文件时，
+    /// 提前把模型加载进显存/内存，使首次识别与后续识别同样快。
+    /// 全程不阻塞 UI，失败静默降级（首次识别时再走懒启动）。
+    /// </summary>
+    private void WarmupServerInBackground()
+    {
+        var modelDir = _settings!.ModelDirectory;
+        if (string.IsNullOrWhiteSpace(modelDir) || !Directory.Exists(modelDir))
+        {
+            return;
+        }
+
+        // 全新设备尚未下载模型时跳过预热，避免无谓启动失败。
+        try
+        {
+            if (Directory.GetFiles(modelDir, "*.gguf", SearchOption.TopDirectoryOnly).Length == 0)
+            {
+                return;
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _server!.EnsureStartedAsync(modelDir, _settings.InferenceDevice, CancellationToken.None);
+                _logger!.Info("llama-server warmed up.");
+            }
+            catch (Exception exception)
+            {
+                _logger!.Warn($"Model warmup skipped: {exception.Message}");
+            }
+        });
     }
 
     private void OnWakePressed(object? sender, EventArgs e)
