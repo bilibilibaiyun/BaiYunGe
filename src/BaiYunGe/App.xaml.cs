@@ -13,6 +13,8 @@ namespace BaiYunGe;
 public partial class App : Application
 {
     private const string MutexName = "BaiYunGe_SingleInstance_2.0";
+    private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string RunValueName = "BaiYunGe";
 
     private Mutex? _mutex;
     private AppLogger? _logger;
@@ -54,6 +56,7 @@ public partial class App : Application
         _store = new AppSettingsStore(_logger, _paths.ConfigFile);
         _settings = _store.Load();
         ApplyTheme(_settings.Theme);
+        SetAutoStart(_settings.AutoStart);
 
         _text = new LocalizedText();
         _text.SetLanguage(_settings.IsEnglish ? AppLanguage.EnUs : AppLanguage.ZhCn);
@@ -113,6 +116,11 @@ public partial class App : Application
         {
             ShowSettings();
         }
+        else
+        {
+            // 正常静默启动：托盘气泡提示已最小化运行。
+            _tray.ShowStartupBalloon();
+        }
     }
 
     /// <summary>
@@ -153,6 +161,39 @@ public partial class App : Application
                 _logger!.Warn($"Model warmup skipped: {exception.Message}");
             }
         });
+    }
+
+    /// <summary>
+    /// 将「开机自启动」设置同步到 HKCU Run 注册表项。
+    /// 勾选时写入当前可执行文件路径，取消时删除该值；失败静默降级，不影响主流程。
+    /// </summary>
+    private void SetAutoStart(bool enabled)
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
+            if (key is null)
+            {
+                return;
+            }
+
+            if (enabled)
+            {
+                var exePath = Environment.ProcessPath;
+                if (!string.IsNullOrWhiteSpace(exePath))
+                {
+                    key.SetValue(RunValueName, $"\"{exePath}\"");
+                }
+            }
+            else
+            {
+                key.DeleteValue(RunValueName, throwOnMissingValue: false);
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger?.Warn($"Failed to update auto-start registry: {exception.Message}");
+        }
     }
 
     private void OnWakePressed(object? sender, EventArgs e)
@@ -338,11 +379,13 @@ public partial class App : Application
                 _hotkeyService!.SetHotkey(ParseHotkey(_settings!.KeyboardShortcut));
                 _text!.SetLanguage(_settings.IsEnglish ? AppLanguage.EnUs : AppLanguage.ZhCn);
                 ApplyTheme(_settings.Theme);
+                SetAutoStart(_settings.AutoStart);
             };
             _mainWindow.ModelInstalled += async () =>
             {
-                // 模型替换后重启推理服务。
+                // 模型替换后重启推理服务，并立即预热新模型，消除首次识别冷启动。
                 await _server!.StopAsync();
+                WarmupServerInBackground();
             };
         }
 

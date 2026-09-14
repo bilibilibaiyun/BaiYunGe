@@ -2,7 +2,7 @@
 ; 由 007 生成 — 白云歌 v2.0.3
 
 #define MyAppName "白云歌 BaiYunGe"
-#define MyAppVersion "2.0.3"
+#define MyAppVersion "2.0.4"
 #define MyAppExeName "BaiYunGe.exe"
 #define MyAppPublisher "BaiYun"
 #define MyAppURL "https://github.com/bilibilibaiyun"
@@ -30,7 +30,7 @@ WizardStyle=modern
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog commandline
 OutputDir=..\artifacts
-OutputBaseFilename=白云歌_BaiYunGe_2.0.3_x64_Setup
+OutputBaseFilename=白云歌_BaiYunGe_2.0.4_x64_Setup
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
@@ -92,16 +92,104 @@ begin
   NewFolderButton.OnClick := @NewFolderButtonClick;
 end;
 
+function PosEx(const SubStr, S: string; Offset: Integer): Integer;
+var
+  Tmp: string;
+  Found: Integer;
+begin
+  if Offset <= 1 then
+    Result := Pos(SubStr, S)
+  else
+  begin
+    Tmp := Copy(S, Offset, Length(S) - Offset + 1);
+    Found := Pos(SubStr, Tmp);
+    if Found > 0 then
+      Result := Found + Offset - 1
+    else
+      Result := 0;
+  end;
+end;
+
+function ExtractModelDirectory(const DataDir: string): string;
+var
+  ConfigPath, Value: string;
+  Json: AnsiString;
+  JsonStr: string;
+  P, Q, R: Integer;
+begin
+  Result := '';
+  ConfigPath := DataDir + '\config.json';
+  if not FileExists(ConfigPath) then Exit;
+  if not LoadStringFromFile(ConfigPath, Json) then Exit;
+  JsonStr := Json;
+  P := Pos('"ModelDirectory"', JsonStr);
+  if P = 0 then Exit;
+  Q := PosEx('"', JsonStr, P + 16);
+  if Q = 0 then Exit;
+  R := PosEx('"', JsonStr, Q + 1);
+  if R = 0 then Exit;
+  Value := Copy(JsonStr, Q + 1, R - Q - 1);
+  StringChange(Value, '\\', '\');
+  Result := Value;
+end;
+
+function FindDataDirectory: string;
+var
+  Candidate: string;
+begin
+  Result := '';
+
+  Candidate := GetEnv('USERPROFILE') + '\BaiYunGe';
+  if FileExists(Candidate + '\config.json') then
+  begin
+    Result := Candidate;
+    Exit;
+  end;
+
+  Candidate := 'D:\Users\' + GetUserNameString + '\BaiYunGe';
+  if FileExists(Candidate + '\config.json') then
+  begin
+    Result := Candidate;
+    Exit;
+  end;
+
+  Candidate := ExpandConstant('{localappdata}') + '\BaiYunGe';
+  if FileExists(Candidate + '\config.json') then
+  begin
+    Result := Candidate;
+    Exit;
+  end;
+
+  Candidate := ExpandConstant('{app}') + '\.data';
+  if FileExists(Candidate + '\config.json') then
+  begin
+    Result := Candidate;
+    Exit;
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
+  DataDir, ModelDir: string;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
+    DataDir := FindDataDirectory;
+    ModelDir := ExtractModelDirectory(DataDir);
+
+    // 先删除模型目录（config.json 里配置的 ModelDirectory，可能独立于数据目录之外）。
+    if (ModelDir <> '') and (ModelDir <> DataDir) and DirExists(ModelDir) then
+      Exec(ExpandConstant('{cmd}'),
+        '/C rmdir /S /Q "' + ModelDir + '" 2>nul & exit 0',
+        '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+    // 再删除数据目录（userprofile / D:\Users / localappdata / appdir 四处回退）。
     Exec(ExpandConstant('{cmd}'),
-      '/C rmdir /S /Q "' + ExpandConstant('{userprofile}') + '\BaiYunGe" 2>nul & ' +
+      '/C rmdir /S /Q "' + GetEnv('USERPROFILE') + '\BaiYunGe" 2>nul & ' +
       'rmdir /S /Q "D:\Users\' + GetUserNameString + '\BaiYunGe" 2>nul & ' +
-      'rmdir /S /Q "' + ExpandConstant('{localappdata}') + '\BaiYunGe" 2>nul & exit 0',
+      'rmdir /S /Q "' + ExpandConstant('{localappdata}') + '\BaiYunGe" 2>nul & ' +
+      'rmdir /S /Q "' + ExpandConstant('{app}') + '\.data" 2>nul & exit 0',
       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;

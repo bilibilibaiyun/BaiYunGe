@@ -44,6 +44,19 @@ public sealed class TrayService : IDisposable
         }
     }
 
+    /// <summary>启动后弹出托盘气泡，提示应用已最小化运行。</summary>
+    public void ShowStartupBalloon()
+    {
+        try
+        {
+            _notifyIcon.ShowBalloonTip(3000, _text.Get("Tray.StartupTipTitle"), _text.Get("Tray.StartupTipText"), ToolTipIcon.Info);
+        }
+        catch
+        {
+            // 气泡失败不影响运行。
+        }
+    }
+
     private ContextMenuStrip BuildMenu()
     {
         var menu = new ContextMenuStrip();

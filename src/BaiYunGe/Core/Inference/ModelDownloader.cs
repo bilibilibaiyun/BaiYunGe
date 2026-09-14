@@ -47,7 +47,7 @@ public sealed class ModelDownloader : IDisposable
             })
     };
 
-    private readonly HttpClient _httpClient = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(30) };
     private readonly AppLogger? _logger;
     private bool _disposed;
 
@@ -238,9 +238,27 @@ public sealed class ModelDownloader : IDisposable
         {
             var buffer = new byte[1024 * 1024];
             var total = existingLength;
-            int read;
-            while ((read = await sourceStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            while (true)
             {
+                int read;
+                using (var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                {
+                    readTimeout.CancelAfter(TimeSpan.FromSeconds(30));
+                    try
+                    {
+                        read = await sourceStream.ReadAsync(buffer, readTimeout.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        throw new IOException($"Read timeout while downloading {file.Name} from {source}.");
+                    }
+                }
+
+                if (read <= 0)
+                {
+                    break;
+                }
+
                 await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
                 total += read;
                 Report(file.Name, total, file.ExpectedSize, source, progress);

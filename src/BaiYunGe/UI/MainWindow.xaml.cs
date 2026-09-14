@@ -185,8 +185,8 @@ public partial class MainWindow : Window
         panel.Children.Add(testButton);
 
         var autoStart = new CheckBox { Content = _text.Get("General.AutoStart"), IsChecked = _settings.AutoStart };
-        autoStart.Checked += (_, _) => { _settings.AutoStart = true; Save(); };
-        autoStart.Unchecked += (_, _) => { _settings.AutoStart = false; Save(); };
+        autoStart.Checked += (_, _) => { _settings.AutoStart = true; Save(); SettingsChanged?.Invoke(); };
+        autoStart.Unchecked += (_, _) => { _settings.AutoStart = false; Save(); SettingsChanged?.Invoke(); };
         panel.Children.Add(autoStart);
 
         return panel;
