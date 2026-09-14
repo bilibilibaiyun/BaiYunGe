@@ -36,4 +36,22 @@ public class HotkeyDefinitionTests
         Assert.True(HotkeyDefinition.TryParse("ctrl+`", out var definition));
         Assert.Equal("Ctrl+`", definition.DisplayText);
     }
+
+    [Theory]
+    [InlineData("Ctrl+Win")]
+    [InlineData("Win")]
+    [InlineData("Ctrl+Shift+Win")]
+    [InlineData("Win+E")]
+    [InlineData("Ctrl+`")]
+    public void DisplayText_RoundTrips(string text)
+    {
+        // 录制→DisplayText→持久化→重新解析 必须无损往返（修复 Win 主键 round-trip 缺陷）。
+        Assert.True(HotkeyDefinition.TryParse(text, out var first));
+        Assert.True(HotkeyDefinition.TryParse(first.DisplayText, out var second));
+        Assert.Equal(first.Ctrl, second.Ctrl);
+        Assert.Equal(first.Alt, second.Alt);
+        Assert.Equal(first.Shift, second.Shift);
+        Assert.Equal(first.Win, second.Win);
+        Assert.Equal(first.Key, second.Key);
+    }
 }

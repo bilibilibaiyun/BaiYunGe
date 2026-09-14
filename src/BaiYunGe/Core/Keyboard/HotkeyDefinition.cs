@@ -31,45 +31,53 @@ public sealed record HotkeyDefinition
             return false;
         }
 
+        var parts = text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0)
+        {
+            return false;
+        }
+
         var ctrl = false;
         var alt = false;
         var shift = false;
         var win = false;
         var key = 0;
 
-        foreach (var part in text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        // 最后一个 part 一定是主键。"Win" 作为主键时（如 "Ctrl+Win"）位于最后，
+        // 与作为修饰键的 "Win+X"（Win 在开头）在位置上是可区分的。
+        var keyPart = parts[^1];
+        if (IsWinWord(keyPart))
         {
-            switch (part.ToLowerInvariant())
+            key = 0x5B; // VK_LWIN：Win 键作为主键
+        }
+        else if (!TryParseKey(keyPart, out key))
+        {
+            return false;
+        }
+
+        // 其余 part 全部作为修饰键。
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            switch (parts[i].ToLowerInvariant())
             {
                 case "ctrl":
                 case "control":
                     ctrl = true;
-                    continue;
+                    break;
                 case "alt":
                     alt = true;
-                    continue;
+                    break;
                 case "shift":
                     shift = true;
-                    continue;
+                    break;
                 case "win":
                 case "windows":
                 case "meta":
                     win = true;
-                    continue;
+                    break;
+                default:
+                    return false;
             }
-
-            if (TryParseKey(part, out var parsedKey))
-            {
-                key = parsedKey;
-                continue;
-            }
-
-            return false;
-        }
-
-        if (key == 0)
-        {
-            return false;
         }
 
         definition = new HotkeyDefinition
@@ -81,6 +89,11 @@ public sealed record HotkeyDefinition
             Key = key
         };
         return true;
+    }
+
+    private static bool IsWinWord(string part)
+    {
+        return part.ToLowerInvariant() is "win" or "windows" or "meta";
     }
 
     public bool Matches(bool ctrl, bool alt, bool shift, bool win, int key)
