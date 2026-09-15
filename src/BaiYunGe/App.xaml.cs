@@ -115,10 +115,10 @@ public partial class App : Application
         // 模型就绪时后台预热 llama-server，消除首次识别的冷启动延迟（约 5 秒加载模型）。
         WarmupServerInBackground();
 
-        // 首次运行自动弹设置（选择模型目录）。
+        // 首次运行自动弹设置，并直接定位到「模型」页引导下载。
         if (string.IsNullOrWhiteSpace(_settings.ModelDirectory) || args.ContainsKey("--settings"))
         {
-            ShowSettings();
+            ShowSettings(focusModel: true);
         }
         else
         {
@@ -127,18 +127,18 @@ public partial class App : Application
         }
     }
 
-    /// <summary>启动后短暂显示「已最小化到托盘」提示，2.5 秒后自动消失。</summary>
+    /// <summary>启动后短暂显示「已最小化到托盘」提示，4 秒后自动消失。</summary>
     private async Task ShowStartupNoticeAsync()
     {
         try
         {
-            await Task.Delay(500);
+            await Task.Delay(600);
             await Dispatcher.InvokeAsync(() =>
             {
                 ShowOverlay();
-                _overlay!.ShowMessage(_text!.Get("Tray.StartupTipText"));
+                _overlay!.ShowNotice(_text!.Get("Tray.StartupTipText"));
             });
-            await Task.Delay(2500);
+            await Task.Delay(4000);
             await Dispatcher.InvokeAsync(() => _overlay?.Hide());
         }
         catch
@@ -177,11 +177,11 @@ public partial class App : Application
         {
             try
             {
-                // 显示预热提示（不抢焦点浮窗）。
+                // 显示预热提示（不抢焦点浮窗，纯文字无电平条）。
                 await Dispatcher.InvokeAsync(() =>
                 {
                     ShowOverlay();
-                    _overlay!.ShowMessage(_text!.Get("Overlay.WarmingUp"));
+                    _overlay!.ShowNotice(_text!.Get("Overlay.WarmingUp"));
                 });
 
                 await _server!.EnsureStartedAsync(modelDir, _settings.InferenceDevice, CancellationToken.None);
@@ -450,7 +450,7 @@ public partial class App : Application
         }
     }
 
-    private void ShowSettings()
+    private void ShowSettings(bool focusModel = false)
     {
         if (_mainWindow is null)
         {
@@ -475,6 +475,11 @@ public partial class App : Application
                 await _server!.StopAsync();
                 WarmupServerInBackground();
             };
+        }
+
+        if (focusModel)
+        {
+            _mainWindow.NavigateToModel();
         }
 
         _mainWindow.Show();

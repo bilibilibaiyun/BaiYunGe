@@ -39,6 +39,9 @@ public sealed class AppPaths
     /// <summary>内置 llama-server 引擎目录。</summary>
     public static string EngineDirectory => Path.Combine(AppDirectory, "engine", "llama-server");
 
+    /// <summary>默认模型安装目录：软件安装路径下的 models 子目录。</summary>
+    public static string DefaultModelDirectory => Path.Combine(AppDirectory, "models");
+
     /// <summary>生成一个唯一的临时 WAV 路径。</summary>
     public string CreateTempWavPath()
     {

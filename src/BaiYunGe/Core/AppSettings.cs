@@ -22,7 +22,7 @@ public sealed class AppSettings
     public bool AutoStart { get; set; }
 
     /// <summary>唤醒快捷键文本，例如 "Ctrl+`"。空表示未设置。</summary>
-    public string KeyboardShortcut { get; set; } = string.Empty;
+    public string KeyboardShortcut { get; set; } = "Ctrl+Win";
 
     /// <summary>hold = 按住说话松开识别；toggle = 按一下开始、再按/静音结束。</summary>
     public string KeyboardMode { get; set; } = "hold";

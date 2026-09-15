@@ -22,12 +22,33 @@ public partial class OverlayWindow : Window
     public OverlayWindow()
     {
         InitializeComponent();
-        Loaded += (_, _) => ApplyExtendedStyles();
+        Loaded += (_, _) =>
+        {
+            ApplyExtendedStyles();
+            PositionAtBottomRight();
+        };
+    }
+
+    /// <summary>定位到主屏幕工作区右下角（系统通知常见位置，易于察觉）。</summary>
+    private void PositionAtBottomRight()
+    {
+        try
+        {
+            var area = SystemParameters.WorkArea;
+            Left = area.Right - ActualWidth - 24;
+            Top = area.Bottom - ActualHeight - 24;
+        }
+        catch
+        {
+            // 定位失败不影响功能。
+        }
     }
 
     public void ShowStatus(string status, double level, string timeText)
     {
         StatusText.Text = status;
+        LevelBar.Visibility = Visibility.Visible;
+        TimeText.Visibility = Visibility.Visible;
         LevelBar.Value = Math.Clamp(level, 0, 1);
         TimeText.Text = timeText;
         FixTextBlockHeight(status);
@@ -41,6 +62,15 @@ public partial class OverlayWindow : Window
     public void ShowMessage(string message)
     {
         ShowStatus(message, 0, string.Empty);
+    }
+
+    /// <summary>纯文字提示：隐藏电平条与计时，用于启动/预热等非录音场景。</summary>
+    public void ShowNotice(string message)
+    {
+        StatusText.Text = message;
+        LevelBar.Visibility = Visibility.Collapsed;
+        TimeText.Visibility = Visibility.Collapsed;
+        FixTextBlockHeight(message);
     }
 
     private void ApplyExtendedStyles()

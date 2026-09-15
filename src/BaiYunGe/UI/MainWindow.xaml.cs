@@ -100,6 +100,12 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>首次运行引导：直接定位到「模型」页，引导用户下载模型。</summary>
+    public void NavigateToModel()
+    {
+        ShowPage("model");
+    }
+
     private UIElement BuildGeneralPage()
     {
         var panel = new StackPanel();
@@ -319,7 +325,11 @@ public partial class MainWindow : Window
         dirGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         dirGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        _modelDirBox = new TextBox { Text = _settings.ModelDirectory, Margin = new Thickness(0, 4, 4, 0) };
+        _modelDirBox = new TextBox
+        {
+            Text = string.IsNullOrEmpty(_settings.ModelDirectory) ? AppPaths.DefaultModelDirectory : _settings.ModelDirectory,
+            Margin = new Thickness(0, 4, 4, 0)
+        };
         Grid.SetColumn(_modelDirBox, 0);
         dirGrid.Children.Add(_modelDirBox);
 
@@ -357,9 +367,13 @@ public partial class MainWindow : Window
         var directory = _modelDirBox?.Text.Trim();
         if (string.IsNullOrEmpty(directory))
         {
-            return;
+            // 目录为空：默认使用软件安装路径下的 models 目录（不再静默返回）。
+            directory = AppPaths.DefaultModelDirectory;
         }
 
+        // 统一可写性检查：目录不可写（典型：安装在 Program Files 且普通权限运行）时回退到用户数据目录。
+        directory = ResolveWritableModelDirectory(directory);
+        _modelDirBox!.Text = directory;
         _settings.ModelDirectory = directory;
         Save();
 
@@ -404,6 +418,41 @@ public partial class MainWindow : Window
             _modelProgress!.Visibility = Visibility.Collapsed;
             _modelStatus!.Text = exception.Message;
             _logger.Error("Model installation failed.", exception);
+        }
+    }
+
+    /// <summary>
+    /// 解析可写的模型目录：优先软件安装路径下的 models 子目录；
+    /// 若不可写（典型：安装在 Program Files 且以普通权限运行），回退到用户数据目录，
+    /// 保证「点安装模型」始终有可落盘的目录，不再静默失败。
+    /// </summary>
+    private static string ResolveWritableModelDirectory(string requested)
+    {
+        try
+        {
+            Directory.CreateDirectory(requested);
+            var probe = Path.Combine(requested, ".write-probe");
+            File.WriteAllText(probe, "1");
+            File.Delete(probe);
+            return requested;
+        }
+        catch
+        {
+            var fallback = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "BaiYunGe",
+                "Models");
+            try
+            {
+                Directory.CreateDirectory(fallback);
+            }
+            catch
+            {
+                // 极端情况：连 LOCALAPPDATA 都不可写，返回原目录由下载逻辑兜底报错。
+                return requested;
+            }
+
+            return fallback;
         }
     }
 
