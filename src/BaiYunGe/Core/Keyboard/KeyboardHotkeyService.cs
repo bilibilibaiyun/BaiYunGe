@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace BaiYunGe.Core.Keyboard;
 
@@ -10,6 +11,7 @@ namespace BaiYunGe.Core.Keyboard;
 public sealed class KeyboardHotkeyService : IDisposable
 {
     private readonly object _sync = new();
+    private readonly SynchronizationContext? _uiContext;
     private NativeMethods.LowLevelKeyboardProc? _hookProc;
     private IntPtr _hookHandle;
     private bool _disposed;
@@ -18,6 +20,14 @@ public sealed class KeyboardHotkeyService : IDisposable
     private bool _recordingHotkey;
     private int _suppressKey;
     private bool _wakeKeyDown;
+
+    public KeyboardHotkeyService()
+    {
+        // 捕获创建线程的同步上下文（App 在 UI 线程创建本服务）。
+        // 事件改为按该上下文串行派发，保证 WakePressed 先于 WakeReleased 执行，
+        // 消除 ThreadPool 并发导致的「快速按下松开时唤醒丢失 / 状态卡死」竞态。
+        _uiContext = SynchronizationContext.Current;
+    }
 
     public event EventHandler? WakePressed;
 
@@ -293,19 +303,37 @@ public sealed class KeyboardHotkeyService : IDisposable
         return true;
     }
 
-    private static void RaiseAsync(Action action)
+    private void RaiseAsync(Action action)
     {
-        ThreadPool.QueueUserWorkItem(_ =>
+        if (_uiContext is not null)
         {
-            try
+            // UI 上下文串行派发：保证按键事件（按下/抬起）按发生顺序处理，避免竞态。
+            _uiContext.Post(_ =>
             {
-                action();
-            }
-            catch
+                try
+                {
+                    action();
+                }
+                catch
+                {
+                    // 事件处理器异常不能影响钩子。
+                }
+            }, null);
+        }
+        else
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
             {
-                // 事件处理器异常不能影响钩子。
-            }
-        });
+                try
+                {
+                    action();
+                }
+                catch
+                {
+                    // 事件处理器异常不能影响钩子。
+                }
+            });
+        }
     }
 
     public void Dispose()

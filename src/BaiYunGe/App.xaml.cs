@@ -314,7 +314,7 @@ public partial class App : Application
 
     private void OnWakeReleased(object? sender, EventArgs e)
     {
-        if (_settings!.KeyboardMode == "hold" && _listening)
+        if (_settings!.KeyboardMode == "hold" && _pipeline!.CurrentStage == PipelineStage.Listening)
         {
             _ = StopListeningAsync();
         }
