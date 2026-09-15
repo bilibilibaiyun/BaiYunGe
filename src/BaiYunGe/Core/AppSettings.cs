@@ -17,7 +17,10 @@ public sealed class AppSettings
     /// <summary>识别语言：auto（自动检测）/ zh / en，独立于界面语言。</summary>
     public string RecognitionLanguage { get; set; } = "auto";
 
-    public string Theme { get; set; } = "dark";
+    public string Theme { get; set; } = "light";
+
+    /// <summary>是否已完成「默认日间」迁移。旧版本默认夜间，首次加载时把遗留的 dark 迁移为 light。</summary>
+    public bool ThemeMigrated { get; set; }
 
     public bool AutoStart { get; set; }
 
@@ -70,6 +73,7 @@ public sealed class AppSettings
             Language = Language,
             RecognitionLanguage = RecognitionLanguage,
             Theme = Theme,
+            ThemeMigrated = ThemeMigrated,
             AutoStart = AutoStart,
             KeyboardShortcut = KeyboardShortcut,
             KeyboardMode = KeyboardMode,

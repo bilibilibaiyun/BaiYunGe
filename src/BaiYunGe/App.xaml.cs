@@ -35,6 +35,9 @@ public partial class App : Application
     private DateTime _listeningStarted;
     private System.Threading.Timer? _keepAliveTimer;
     private int _overlayHideGeneration;
+    private UpdateChecker? _updateChecker;
+    private UpdateInfo? _latestUpdateInfo;
+    private bool _updateCheckCompleted;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -126,6 +129,38 @@ public partial class App : Application
             // 正常静默启动：用不抢焦点的浮窗显示「已最小化到托盘」提示（托盘气泡易被系统通知设置吞掉）。
             _ = ShowStartupNoticeAsync();
         }
+
+        // 后台静默检测新版本，结果缓存供设置页显示（打开设置页即可看到是否有新版）。
+        _ = CheckUpdateSilentlyAsync();
+    }
+
+    /// <summary>静默更新检测完成时触发（供设置页刷新状态显示）。</summary>
+    public event Action? UpdateCheckCompleted;
+
+    /// <summary>启动时静默检测的最新版本信息（未完成或失败时为 null）。</summary>
+    public UpdateInfo? LatestUpdateInfo => _latestUpdateInfo;
+
+    /// <summary>是否已完成启动时的静默检测（失败也算完成）。</summary>
+    public bool IsUpdateCheckCompleted => _updateCheckCompleted;
+
+    /// <summary>后台静默检测一次 GitHub 最新版本，缓存结果并通知设置页。</summary>
+    private async Task CheckUpdateSilentlyAsync()
+    {
+        try
+        {
+            _updateChecker ??= new UpdateChecker();
+            var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "2.1.2";
+            _latestUpdateInfo = await _updateChecker.CheckAsync(current);
+        }
+        catch (Exception exception)
+        {
+            _logger?.Warn($"Silent update check failed: {exception.Message}");
+        }
+        finally
+        {
+            _updateCheckCompleted = true;
+            UpdateCheckCompleted?.Invoke();
+        }
     }
 
     /// <summary>启动后短暂显示「已最小化到托盘」提示，4 秒后自动消失。</summary>
@@ -178,6 +213,11 @@ public partial class App : Application
         {
             try
             {
+                // 延迟预热：等软件启动稳定（托盘就绪、UI 响应）后再加载模型，
+                // 避免启动早期（尤其更新覆盖安装后）模型大文件磁盘 I/O 与 GPU 探测
+                // 抢占资源，导致自启动缓慢、界面卡顿。首次识别若早于此时仍会走懒启动。
+                await Task.Delay(TimeSpan.FromSeconds(15));
+
                 // 显示预热提示（不抢焦点浮窗，纯文字无电平条）。
                 await Dispatcher.InvokeAsync(() =>
                 {

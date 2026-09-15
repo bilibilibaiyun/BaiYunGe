@@ -5,7 +5,7 @@ namespace BaiYunGe.Core;
 /// <summary>词典：别名自动替换 + 作为 prompt 参考词汇提供给模型。</summary>
 public sealed class DictionaryProcessor
 {
-    /// <summary>构建给模型的参考词汇 prompt。</summary>
+    /// <summary>构建给模型的参考词汇 prompt（同时包含别名与目标词，去重）。</summary>
     public string BuildPrompt(IReadOnlyList<DictionaryEntry> dictionary, bool enabled)
     {
         if (!enabled || dictionary.Count == 0)
@@ -14,19 +14,25 @@ public sealed class DictionaryProcessor
         }
 
         var builder = new StringBuilder();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in dictionary)
         {
-            if (string.IsNullOrWhiteSpace(entry.Target))
+            // 别名和目标词都作为参考词汇，帮助模型把音近/别字纠正为词典词。
+            foreach (var raw in new[] { entry.Alias, entry.Target })
             {
-                continue;
-            }
+                var word = raw?.Trim();
+                if (string.IsNullOrWhiteSpace(word) || !seen.Add(word))
+                {
+                    continue;
+                }
 
-            if (builder.Length > 0)
-            {
-                builder.Append('、');
-            }
+                if (builder.Length > 0)
+                {
+                    builder.Append('、');
+                }
 
-            builder.Append(entry.Target.Trim());
+                builder.Append(word);
+            }
         }
 
         return builder.ToString();

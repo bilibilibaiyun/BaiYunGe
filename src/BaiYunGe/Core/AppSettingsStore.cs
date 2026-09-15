@@ -39,6 +39,18 @@ public sealed class AppSettingsStore
                 var json = File.ReadAllText(_configPath);
                 var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
                 settings.Dictionary ??= new List<DictionaryEntry>();
+
+                // 旧版本默认夜间：首次加载时把遗留的 dark 迁移为 light（用户要求默认日间），
+                // 迁移后打标记，避免覆盖用户之后主动选择的夜间。
+                if (!settings.ThemeMigrated &&
+                    string.Equals(settings.Theme, "dark", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.Theme = "light";
+                    settings.ThemeMigrated = true;
+                    Save(settings);
+                    _logger.Info("Theme default migrated from dark to light.");
+                }
+
                 return settings;
             }
             catch (Exception exception)

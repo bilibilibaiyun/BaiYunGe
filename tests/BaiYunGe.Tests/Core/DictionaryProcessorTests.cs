@@ -8,7 +8,7 @@ public class DictionaryProcessorTests
     private readonly DictionaryProcessor _processor = new();
 
     [Fact]
-    public void BuildPrompt_ListsTargets()
+    public void BuildPrompt_ListsAliasesAndTargets()
     {
         var dict = new List<DictionaryEntry>
         {
@@ -17,7 +17,7 @@ public class DictionaryProcessorTests
         };
 
         var prompt = _processor.BuildPrompt(dict, true);
-        Assert.Equal("白云先生、语音识别", prompt);
+        Assert.Equal("白云、白云先生、ASR、语音识别", prompt);
     }
 
     [Fact]

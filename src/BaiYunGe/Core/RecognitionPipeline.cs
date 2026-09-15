@@ -357,7 +357,7 @@ public sealed class RecognitionPipeline : IDisposable
             return true;
         }
 
-        // 词典幻觉：若输出仅由词典目标词组成（移除所有目标词后不剩内容），判定为 echo。
+        // 词典幻觉：若输出仅由词典词（目标词或别名）组成（移除后不剩内容），判定为 echo。
         if (!dictionaryEnabled || dictionary.Count == 0)
         {
             return false;
@@ -369,6 +369,11 @@ public sealed class RecognitionPipeline : IDisposable
             if (!string.IsNullOrWhiteSpace(entry.Target))
             {
                 remaining = remaining.Replace(entry.Target, string.Empty, StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.Alias))
+            {
+                remaining = remaining.Replace(entry.Alias, string.Empty, StringComparison.OrdinalIgnoreCase);
             }
         }
 

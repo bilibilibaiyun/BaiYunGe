@@ -17,6 +17,9 @@ public sealed class LlamaServerManager : IDisposable
 {
     private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(2);
 
+    /// <summary>转写多少次后主动重启 llama-server，释放长期运行累积的显存/内存碎片，避免识别渐慢。</summary>
+    private const int RestartAfterTranscripts = 50;
+
     private readonly AppLogger _logger;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _startupLock = new(1, 1);
@@ -32,6 +35,7 @@ public sealed class LlamaServerManager : IDisposable
 
     private string _loadedModelDirectory = string.Empty;
     private string _loadedDevice = string.Empty;
+    private int _transcriptionCount;
 
     public LlamaServerManager(AppLogger logger)
     {
@@ -68,7 +72,8 @@ public sealed class LlamaServerManager : IDisposable
                     IsHealthy &&
                     _httpClient is not null &&
                     string.Equals(_loadedModelDirectory, modelDirectory, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(_loadedDevice, inferenceDevice, StringComparison.OrdinalIgnoreCase))
+                    string.Equals(_loadedDevice, inferenceDevice, StringComparison.OrdinalIgnoreCase) &&
+                    _transcriptionCount < RestartAfterTranscripts)
                 {
                     return;
                 }
@@ -116,6 +121,7 @@ public sealed class LlamaServerManager : IDisposable
     {
         var client = GetHttpClient();
         var baseUri = _baseUri ?? throw new InvalidOperationException("llama-server is not initialized.");
+        var stopwatch = Stopwatch.StartNew();
 
         using var fileStream = new FileStream(
             wavPath,
@@ -163,6 +169,9 @@ public sealed class LlamaServerManager : IDisposable
             if (document.RootElement.TryGetProperty("text", out var textElement))
             {
                 var text = textElement.GetString() ?? string.Empty;
+                _transcriptionCount++;
+                stopwatch.Stop();
+                _logger.Debug($"Transcription #{_transcriptionCount} took {stopwatch.ElapsedMilliseconds} ms.");
                 _logger.Debug($"llama-server transcript: {Truncate(text, 2000)}");
                 return text;
             }
@@ -172,6 +181,9 @@ public sealed class LlamaServerManager : IDisposable
             _logger.Warn($"llama-server response was not JSON: {exception.Message}");
         }
 
+        _transcriptionCount++;
+        stopwatch.Stop();
+        _logger.Debug($"Transcription #{_transcriptionCount} took {stopwatch.ElapsedMilliseconds} ms.");
         _logger.Debug($"llama-server transcript (raw): {Truncate(responseText, 2000)}");
         return responseText;
     }
@@ -296,6 +308,8 @@ public sealed class LlamaServerManager : IDisposable
         try
         {
             await WaitForHealthAsync(process, cancellationToken).ConfigureAwait(false);
+            // 新进程就绪，重置转写计数（用于定期重启避免长期运行性能退化）。
+            _transcriptionCount = 0;
         }
         catch
         {

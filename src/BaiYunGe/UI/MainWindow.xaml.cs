@@ -61,6 +61,12 @@ public partial class MainWindow : Window
         _hotkeyService.RecordCancelled += OnRecordCancelled;
         text.LanguageChanged += (_, _) => RefreshLocalization();
 
+        // 订阅启动时静默检测完成事件，及时刷新更新状态显示。
+        if (System.Windows.Application.Current is App app)
+        {
+            app.UpdateCheckCompleted += OnUpdateCheckCompleted;
+        }
+
         RefreshLocalization();
         ShowPage("general");
     }
@@ -214,6 +220,7 @@ public partial class MainWindow : Window
             TextWrapping = TextWrapping.Wrap
         };
         panel.Children.Add(_updateStatus);
+        RefreshUpdateStatus();
 
         return panel;
     }
@@ -583,10 +590,21 @@ public partial class MainWindow : Window
             return;
         }
 
-        _updateStatus.Text = _text.Get("Update.Checking");
-        var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "2.0.4";
+        // 优先使用启动时静默检测的缓存结果（已有新版则直接询问，无需重复检测）。
+        UpdateInfo? info = null;
+        if (System.Windows.Application.Current is App { IsUpdateCheckCompleted: true } app)
+        {
+            info = app.LatestUpdateInfo;
+        }
 
-        var info = await _updateChecker.CheckAsync(current);
+        // 无缓存新版时（静默检测未完成/失败/无新版），用户主动触发则重新检测一次保证最新。
+        if (info is null || !info.HasUpdate)
+        {
+            _updateStatus.Text = _text.Get("Update.Checking");
+            var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "2.0.4";
+            info = await _updateChecker.CheckAsync(current);
+        }
+
         if (info is null)
         {
             _updateStatus.Text = _text.Get("Update.Failed");
@@ -611,6 +629,44 @@ public partial class MainWindow : Window
         {
             await DownloadAndInstallUpdateAsync(info.DownloadUrl, info.LatestVersion);
         }
+    }
+
+    /// <summary>根据启动时静默检测的缓存结果刷新更新状态显示。</summary>
+    private void RefreshUpdateStatus()
+    {
+        if (_updateStatus is null)
+        {
+            return;
+        }
+
+        var app = System.Windows.Application.Current as App;
+        if (app is null)
+        {
+            return;
+        }
+
+        if (!app.IsUpdateCheckCompleted)
+        {
+            _updateStatus.Text = _text.Get("Update.Checking");
+        }
+        else if (app.LatestUpdateInfo is { HasUpdate: true } info)
+        {
+            _updateStatus.Text = $"{_text.Get("Update.NewVersion")}：v{info.LatestVersion}";
+        }
+        else if (app.LatestUpdateInfo is not null)
+        {
+            _updateStatus.Text = _text.Get("Update.UpToDate");
+        }
+        else
+        {
+            _updateStatus.Text = _text.Get("Update.Failed");
+        }
+    }
+
+    /// <summary>静默检测完成（后台线程）后，切回 UI 线程刷新状态。</summary>
+    private void OnUpdateCheckCompleted()
+    {
+        Dispatcher.Invoke(RefreshUpdateStatus);
     }
 
     /// <summary>下载安装包 → 退出软件并静默覆盖安装（保留配置，不删数据目录）。</summary>
