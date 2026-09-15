@@ -33,6 +33,7 @@ public partial class App : Application
     private bool _paused;
     private bool _listening;
     private DateTime _listeningStarted;
+    private System.Threading.Timer? _keepAliveTimer;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -108,6 +109,9 @@ public partial class App : Application
 
         _logger.Info("BaiYunGe ready.");
 
+        // 启动模型保活定时器（每隔 5 分钟健康检查，进程退出则自动重启）。
+        StartKeepAliveTimer();
+
         // 模型就绪时后台预热 llama-server，消除首次识别的冷启动延迟（约 5 秒加载模型）。
         WarmupServerInBackground();
 
@@ -118,14 +122,34 @@ public partial class App : Application
         }
         else
         {
-            // 正常静默启动：托盘气泡提示已最小化运行。
-            _tray.ShowStartupBalloon();
+            // 正常静默启动：用不抢焦点的浮窗显示「已最小化到托盘」提示（托盘气泡易被系统通知设置吞掉）。
+            _ = ShowStartupNoticeAsync();
+        }
+    }
+
+    /// <summary>启动后短暂显示「已最小化到托盘」提示，2.5 秒后自动消失。</summary>
+    private async Task ShowStartupNoticeAsync()
+    {
+        try
+        {
+            await Task.Delay(500);
+            await Dispatcher.InvokeAsync(() =>
+            {
+                ShowOverlay();
+                _overlay!.ShowMessage(_text!.Get("Tray.StartupTipText"));
+            });
+            await Task.Delay(2500);
+            await Dispatcher.InvokeAsync(() => _overlay?.Hide());
+        }
+        catch
+        {
+            // 提示失败不影响运行。
         }
     }
 
     /// <summary>
-    /// 后台静默预热 llama-server：模型目录已配置且确有 gguf 文件时，
-    /// 提前把模型加载进显存/内存，使首次识别与后续识别同样快。
+    /// 后台预热 llama-server：模型目录已配置且确有 gguf 文件时，
+    /// 在状态浮窗显示「模型预热中」，把模型加载进显存/内存后自动隐藏。
     /// 全程不阻塞 UI，失败静默降级（首次识别时再走懒启动）。
     /// </summary>
     private void WarmupServerInBackground()
@@ -153,6 +177,13 @@ public partial class App : Application
         {
             try
             {
+                // 显示预热提示（不抢焦点浮窗）。
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    ShowOverlay();
+                    _overlay!.ShowMessage(_text!.Get("Overlay.WarmingUp"));
+                });
+
                 await _server!.EnsureStartedAsync(modelDir, _settings.InferenceDevice, CancellationToken.None);
                 _logger!.Info("llama-server warmed up.");
             }
@@ -160,7 +191,61 @@ public partial class App : Application
             {
                 _logger!.Warn($"Model warmup skipped: {exception.Message}");
             }
+            finally
+            {
+                // 仅在空闲（非识别中）时隐藏预热提示，避免误关识别中的状态弹窗。
+                if (_pipeline!.CurrentStage == PipelineStage.Idle)
+                {
+                    await Dispatcher.InvokeAsync(() => _overlay?.Hide());
+                }
+            }
         });
+    }
+
+    /// <summary>启动模型保活定时器：每隔一段时间健康检查 llama-server，退出则自动重启。</summary>
+    private void StartKeepAliveTimer()
+    {
+        _keepAliveTimer?.Dispose();
+        _keepAliveTimer = new System.Threading.Timer(
+            _ => _ = KeepModelAliveAsync(),
+            null,
+            TimeSpan.FromMinutes(5),
+            TimeSpan.FromMinutes(5));
+    }
+
+    private async Task KeepModelAliveAsync()
+    {
+        var modelDir = _settings!.ModelDirectory;
+        if (string.IsNullOrWhiteSpace(modelDir) || !Directory.Exists(modelDir))
+        {
+            return;
+        }
+
+        try
+        {
+            if (Directory.GetFiles(modelDir, "*.gguf", SearchOption.TopDirectoryOnly).Length == 0)
+            {
+                return;
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        // llama-server 进程意外退出后自动重启，保持模型常驻。
+        if (!_server!.IsHealthy)
+        {
+            _logger!.Info("llama-server not healthy; restarting keep-alive warmup.");
+            try
+            {
+                await _server.EnsureStartedAsync(modelDir, _settings.InferenceDevice, CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                _logger!.Warn($"Keep-alive warmup failed: {exception.Message}");
+            }
+        }
     }
 
     /// <summary>
@@ -174,6 +259,7 @@ public partial class App : Application
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
             if (key is null)
             {
+                _logger?.Warn("Auto-start registry key not found.");
                 return;
             }
 
@@ -183,11 +269,13 @@ public partial class App : Application
                 if (!string.IsNullOrWhiteSpace(exePath))
                 {
                     key.SetValue(RunValueName, $"\"{exePath}\"");
+                    _logger?.Info($"Auto-start enabled: {exePath}");
                 }
             }
             else
             {
                 key.DeleteValue(RunValueName, throwOnMissingValue: false);
+                _logger?.Info("Auto-start disabled.");
             }
         }
         catch (Exception exception)
@@ -396,6 +484,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _logger?.Info("BaiYunGe exiting.");
+        _keepAliveTimer?.Dispose();
         _pipeline?.Dispose();
         _hotkeyService?.Dispose();
         _server?.Dispose();

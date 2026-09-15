@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private readonly KeyboardHotkeyService _hotkeyService;
     private readonly ModelDownloader _downloader;
     private readonly AppLogger _logger;
+    private readonly UpdateChecker _updateChecker = new();
 
     private string _currentPage = "general";
 
@@ -36,6 +37,7 @@ public partial class MainWindow : Window
     private TextBox? _modelDirBox;
     private ProgressBar? _modelProgress;
     private TextBlock? _modelStatus;
+    private TextBlock? _updateStatus;
 
     public MainWindow(
         LocalizedText text,
@@ -188,6 +190,24 @@ public partial class MainWindow : Window
         autoStart.Checked += (_, _) => { _settings.AutoStart = true; Save(); SettingsChanged?.Invoke(); };
         autoStart.Unchecked += (_, _) => { _settings.AutoStart = false; Save(); SettingsChanged?.Invoke(); };
         panel.Children.Add(autoStart);
+
+        // 更新检查区域
+        panel.Children.Add(Label(_text.Get("Update.CurrentVersion")));
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "2.0.4";
+        panel.Children.Add(new TextBlock { Text = version, FontSize = 14, Margin = new Thickness(0, 4, 0, 0) });
+
+        var checkButton = new Button { Content = _text.Get("Update.Check") };
+        checkButton.Click += async (_, _) => await CheckForUpdateAsync();
+        panel.Children.Add(checkButton);
+
+        _updateStatus = new TextBlock
+        {
+            Text = string.Empty,
+            FontSize = 12,
+            Margin = new Thickness(0, 6, 0, 0),
+            TextWrapping = TextWrapping.Wrap
+        };
+        panel.Children.Add(_updateStatus);
 
         return panel;
     }
@@ -504,6 +524,96 @@ public partial class MainWindow : Window
     private void Save()
     {
         _store.Save(_settings);
+    }
+
+    /// <summary>检查 GitHub 是否有新版本；有更新则显示更新日志并询问是否更新。</summary>
+    private async Task CheckForUpdateAsync()
+    {
+        if (_updateStatus is null)
+        {
+            return;
+        }
+
+        _updateStatus.Text = _text.Get("Update.Checking");
+        var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "2.0.4";
+
+        var info = await _updateChecker.CheckAsync(current);
+        if (info is null)
+        {
+            _updateStatus.Text = _text.Get("Update.Failed");
+            return;
+        }
+
+        if (!info.HasUpdate)
+        {
+            _updateStatus.Text = _text.Get("Update.UpToDate");
+            return;
+        }
+
+        var notes = info.ReleaseNotes;
+        if (notes.Length > 600)
+        {
+            notes = notes[..600] + "…";
+        }
+
+        var message = $"{_text.Get("Update.NewVersion")}：v{info.LatestVersion}\n\n{notes}\n\n{_text.Get("Update.Confirm")}";
+        var result = MessageBox.Show(this, message, _text.Get("Update.Title"), MessageBoxButton.YesNo, MessageBoxImage.Information);
+        if (result == MessageBoxResult.Yes && !string.IsNullOrWhiteSpace(info.DownloadUrl))
+        {
+            await DownloadAndInstallUpdateAsync(info.DownloadUrl, info.LatestVersion);
+        }
+    }
+
+    /// <summary>下载安装包 → 退出软件并静默覆盖安装（保留配置，不删数据目录）。</summary>
+    private async Task DownloadAndInstallUpdateAsync(string url, string version)
+    {
+        try
+        {
+            var tempDir = Path.GetTempPath();
+            var installerPath = Path.Combine(tempDir, $"BaiYunGe_Setup_v{version}.exe");
+
+            using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(30) };
+            using var response = await client.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+            if (!response.IsSuccessStatusCode)
+            {
+                _updateStatus!.Text = _text.Get("Update.Failed");
+                return;
+            }
+
+            var total = response.Content.Headers.ContentLength ?? 0;
+            await using var stream = await response.Content.ReadAsStreamAsync();
+            await using var file = new FileStream(installerPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            var buffer = new byte[1024 * 1024];
+            long received = 0;
+            int read;
+            while ((read = await stream.ReadAsync(buffer)) > 0)
+            {
+                await file.WriteAsync(buffer.AsMemory(0, read));
+                received += read;
+                if (total > 0)
+                {
+                    _updateStatus!.Text = _text.Format("Update.Downloading", BytesToText(received), BytesToText(total));
+                }
+            }
+
+            // 写一个延迟启动脚本：等软件退出后，静默运行安装包覆盖安装。
+            var scriptPath = Path.Combine(tempDir, "baiyunge_update.cmd");
+            await File.WriteAllTextAsync(scriptPath,
+                $"timeout /t 2 /nobreak >nul & start \"\" \"{installerPath}\" /VERYSILENT /NORESTART /SUPPRESSMSGBOXES");
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/C \"{scriptPath}\"")
+            {
+                UseShellExecute = true,
+                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden
+            });
+
+            Application.Current.Shutdown();
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Update failed.", exception);
+            _updateStatus!.Text = _text.Get("Update.Failed");
+        }
     }
 
     private static TextBlock Label(string text)

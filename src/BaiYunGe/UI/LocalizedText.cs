@@ -65,6 +65,7 @@ public sealed class LocalizedText
 
         ["Overlay.Listening"] = ("倾听中…", "Listening…"),
         ["Overlay.Transcribing"] = ("转化中…", "Transcribing…"),
+        ["Overlay.WarmingUp"] = ("模型预热中…", "Warming up model…"),
         ["Overlay.Done"] = ("已输入", "Done"),
         ["Overlay.Copied"] = ("已复制到剪贴板", "Copied to clipboard"),
         ["Overlay.NoSpeech"] = ("未检测到语音", "No speech detected"),
@@ -73,6 +74,17 @@ public sealed class LocalizedText
 
         ["FirstRun.Title"] = ("首次运行", "First Run"),
         ["FirstRun.Message"] = ("请选择模型保存目录（建议放在 D 盘）", "Please choose a model directory (D: drive recommended)"),
+
+        ["Update.Title"] = ("检查更新", "Check for Updates"),
+        ["Update.Check"] = ("检查更新", "Check for Updates"),
+        ["Update.Checking"] = ("正在检查更新…", "Checking for updates…"),
+        ["Update.UpToDate"] = ("已是最新版本", "You are up to date"),
+        ["Update.Failed"] = ("检查更新失败（网络不可用）", "Update check failed (network unavailable)"),
+        ["Update.NewVersion"] = ("发现新版本", "New version available"),
+        ["Update.CurrentVersion"] = ("当前版本", "Current version"),
+        ["Update.LatestVersion"] = ("最新版本", "Latest version"),
+        ["Update.Downloading"] = ("正在下载更新 {0} / {1}", "Downloading update {0} / {1}"),
+        ["Update.Confirm"] = ("是否立即更新？更新会保留你的词典、主题等配置。", "Update now? Your dictionary, theme and other settings will be kept."),
 
         ["Common.OK"] = ("确定", "OK"),
         ["Common.Cancel"] = ("取消", "Cancel"),

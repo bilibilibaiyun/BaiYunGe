@@ -2,7 +2,7 @@
 ; 由 007 生成 — 白云歌 v2.0.3
 
 #define MyAppName "白云歌 BaiYunGe"
-#define MyAppVersion "2.0.4"
+#define MyAppVersion "2.0.5"
 #define MyAppExeName "BaiYunGe.exe"
 #define MyAppPublisher "BaiYun"
 #define MyAppURL "https://github.com/bilibilibaiyun"
@@ -30,7 +30,7 @@ WizardStyle=modern
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog commandline
 OutputDir=..\artifacts
-OutputBaseFilename=白云歌_BaiYunGe_2.0.4_x64_Setup
+OutputBaseFilename=白云歌_BaiYunGe_2.0.5_x64_Setup
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
@@ -175,6 +175,11 @@ var
 begin
   if CurUninstallStep = usPostUninstall then
   begin
+    // 删除开机自启动注册表键（清除一切痕迹）。
+    Exec(ExpandConstant('{cmd}'),
+      '/C reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v BaiYunGe /f 2>nul & exit 0',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
     DataDir := FindDataDirectory;
     ModelDir := ExtractModelDirectory(DataDir);
 
