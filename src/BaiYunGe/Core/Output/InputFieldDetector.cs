@@ -68,11 +68,8 @@ public static class InputFieldDetector
             return !((ValuePattern)valuePattern).Current.IsReadOnly;
         }
 
-        if (element.TryGetCurrentPattern(TextPattern.Pattern, out _))
-        {
-            return true;
-        }
-
+        // 不再用 TextPattern 判断可编辑：只读的列表/文本控件（如桌面图标列表、
+        // 资源管理器文件列表、Static 文本、Tree）同样支持 TextPattern，会误判为可编辑。
         return false;
     }
 
