@@ -621,34 +621,44 @@ public partial class MainWindow : Window
             var tempDir = Path.GetTempPath();
             var installerPath = Path.Combine(tempDir, $"BaiYunGe_Setup_v{version}.exe");
 
-            using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(30) };
-            using var response = await client.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
-            if (!response.IsSuccessStatusCode)
+            // 下载安装包。单独作用域：下载完立即关闭文件句柄，避免安装器启动时源文件仍被占用。
+            using (var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(30) })
+            using (var response = await client.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead))
             {
-                _updateStatus!.Text = _text.Get("Update.Failed");
-                return;
-            }
-
-            var total = response.Content.Headers.ContentLength ?? 0;
-            await using var stream = await response.Content.ReadAsStreamAsync();
-            await using var file = new FileStream(installerPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            var buffer = new byte[1024 * 1024];
-            long received = 0;
-            int read;
-            while ((read = await stream.ReadAsync(buffer)) > 0)
-            {
-                await file.WriteAsync(buffer.AsMemory(0, read));
-                received += read;
-                if (total > 0)
+                if (!response.IsSuccessStatusCode)
                 {
-                    _updateStatus!.Text = _text.Format("Update.Downloading", BytesToText(received), BytesToText(total));
+                    _updateStatus!.Text = _text.Get("Update.Failed");
+                    return;
+                }
+
+                var total = response.Content.Headers.ContentLength ?? 0;
+                using (var stream = await response.Content.ReadAsStreamAsync())
+                using (var file = new FileStream(installerPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    var buffer = new byte[1024 * 1024];
+                    long received = 0;
+                    int read;
+                    while ((read = await stream.ReadAsync(buffer)) > 0)
+                    {
+                        await file.WriteAsync(buffer.AsMemory(0, read));
+                        received += read;
+                        if (total > 0)
+                        {
+                            _updateStatus!.Text = _text.Format("Update.Downloading", BytesToText(received), BytesToText(total));
+                        }
+                    }
+
+                    await file.FlushAsync();
                 }
             }
 
-            // 写一个延迟启动脚本：等软件退出后，静默运行安装包覆盖安装。
+            // 明确提示用户：软件即将退出，随后可能出现 UAC 授权窗口（安装包需管理员权限覆盖安装）。
+            MessageBox.Show(this, _text.Get("Update.ReadyToInstall"), _text.Get("Update.Title"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+
+            // 写延迟启动脚本：等待软件完全退出后，再启动安装包静默覆盖安装。
             var scriptPath = Path.Combine(tempDir, "baiyunge_update.cmd");
-            await File.WriteAllTextAsync(scriptPath,
-                $"timeout /t 2 /nobreak >nul & start \"\" \"{installerPath}\" /VERYSILENT /NORESTART /SUPPRESSMSGBOXES");
+            await File.WriteAllTextAsync(scriptPath, BuildUpdateScript(installerPath));
 
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/C \"{scriptPath}\"")
             {
@@ -663,6 +673,32 @@ public partial class MainWindow : Window
             _logger.Error("Update failed.", exception);
             _updateStatus!.Text = _text.Get("Update.Failed");
         }
+    }
+
+    /// <summary>
+    /// 构建延迟更新脚本：轮询等待 BaiYunGe.exe 完全退出（最多约 30 秒）后，
+    /// 再静默启动安装包覆盖安装。不用固定 sleep——设备快慢不同，2 秒可能不够进程退出，
+    /// 否则安装器检测到 AppMutex 仍被占用会静默失败。延迟用 ping 实现，兼容性最好。
+    /// </summary>
+    private static string BuildUpdateScript(string installerPath)
+    {
+        var lines = new[]
+        {
+            "@echo off",
+            "setlocal",
+            "set tries=0",
+            ":waitloop",
+            "tasklist /FI \"IMAGENAME eq BaiYunGe.exe\" 2>nul | find /I \"BaiYunGe.exe\" >nul",
+            "if errorlevel 1 goto install",
+            "if %tries% GEQ 30 goto install",
+            "ping -n 2 127.0.0.1 >nul",
+            "set /a tries+=1",
+            "goto waitloop",
+            ":install",
+            $"start \"\" \"{installerPath}\" /VERYSILENT /NORESTART /SUPPRESSMSGBOXES",
+        };
+
+        return string.Join("\r\n", lines);
     }
 
     private static TextBlock Label(string text)

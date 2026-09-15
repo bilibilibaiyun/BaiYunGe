@@ -2,7 +2,7 @@
 ; 由 007 生成 — 白云歌 v2.0.3
 
 #define MyAppName "白云歌 BaiYunGe"
-#define MyAppVersion "2.1.1"
+#define MyAppVersion "2.1.2"
 #define MyAppExeName "BaiYunGe.exe"
 #define MyAppPublisher "BaiYun"
 #define MyAppURL "https://github.com/bilibilibaiyun"
@@ -29,8 +29,11 @@ SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog commandline
+; 覆盖安装时若程序仍在运行（AppMutex 被占用），静默模式自动关闭它而非失败。
+CloseApplications=yes
+RestartApplications=no
 OutputDir=..\artifacts
-OutputBaseFilename=白云歌_BaiYunGe_2.1.1_x64_Setup
+OutputBaseFilename=白云歌_BaiYunGe_2.1.2_x64_Setup
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"

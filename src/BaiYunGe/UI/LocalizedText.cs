@@ -85,6 +85,7 @@ public sealed class LocalizedText
         ["Update.LatestVersion"] = ("最新版本", "Latest version"),
         ["Update.Downloading"] = ("正在下载更新 {0} / {1}", "Downloading update {0} / {1}"),
         ["Update.Confirm"] = ("是否立即更新？更新会保留你的词典、主题等配置。", "Update now? Your dictionary, theme and other settings will be kept."),
+        ["Update.ReadyToInstall"] = ("更新已下载完成。\n\n软件即将退出，随后可能会弹出 Windows 用户账户控制（UAC）窗口，请点击「是」以完成安装。", "Update downloaded.\n\nThe app will now exit. If a Windows User Account Control (UAC) prompt appears, click \"Yes\" to complete the installation."),
 
         ["Common.OK"] = ("确定", "OK"),
         ["Common.Cancel"] = ("取消", "Cancel"),
