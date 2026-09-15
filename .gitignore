@@ -9,6 +9,9 @@ publish/
 .tmp/
 .wix/
 
+# Inno Setup 编译临时日志
+installer/iscc-output.log
+
 # 内置 llama.cpp 引擎运行时（体积大，随安装包分发，见 Release）
 engine/
 
