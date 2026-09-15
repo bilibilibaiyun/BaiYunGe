@@ -34,6 +34,7 @@ public partial class App : Application
     private bool _listening;
     private DateTime _listeningStarted;
     private System.Threading.Timer? _keepAliveTimer;
+    private int _overlayHideGeneration;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -425,7 +426,7 @@ public partial class App : Application
                 _overlay.ShowMessage(_text!.Get("Overlay.Done"));
             }
 
-            _ = HideOverlayAfterDelayAsync();
+            _ = HideOverlayAfterDelayAsync(_overlayHideGeneration);
         });
     }
 
@@ -434,15 +435,24 @@ public partial class App : Application
         Dispatcher.Invoke(() => _overlay?.ShowMessage($"{_text!.Get("Overlay.Error")}: {message}"));
     }
 
-    private async Task HideOverlayAfterDelayAsync()
+    /// <summary>延迟隐藏浮窗。带代次校验：若期间开始了新的识别，则放弃隐藏。</summary>
+    private async Task HideOverlayAfterDelayAsync(int generation)
     {
         await Task.Delay(1200);
-        Dispatcher.Invoke(() => _overlay?.Hide());
+        Dispatcher.Invoke(() =>
+        {
+            if (generation == _overlayHideGeneration)
+            {
+                _overlay?.Hide();
+            }
+        });
     }
 
     private void ShowOverlay()
     {
         _overlay ??= new OverlayWindow();
+        // 新识别开始：递增代次，使上一次识别遗留的「延迟隐藏」定时器失效。
+        _overlayHideGeneration++;
         _overlay.ShowMessage(_text!.Get("Overlay.Listening"));
         if (!_overlay.IsVisible)
         {

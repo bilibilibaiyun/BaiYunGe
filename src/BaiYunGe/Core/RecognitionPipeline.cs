@@ -287,25 +287,92 @@ public sealed class RecognitionPipeline : IDisposable
             var parsed = _parser.Parse(rawText);
             var text = _dictionary.ReplaceAliases(parsed.Text, settings.Dictionary, settings.DictionaryEnabled);
 
-            CleanupWav();
-            SetStage(PipelineStage.Completed);
+            // 静音 / 词典幻觉检测：转写结果为空、纯标点，或只是参考词汇的 echo 时，
+            // 视为无有效语音，不键入任何内容（修复「按住快捷键不说话、松开后自动键入词典内容」）。
+            if (IsEmptyOrHallucination(text, settings.Dictionary, settings.DictionaryEnabled))
+            {
+                CleanupWav();
+                _logger.Info($"No valid speech (empty or hallucination): '{text}'");
+                var noSpeech = new PipelineResult(string.Empty, false, captureResult.StopReason, OutputResult.Failed, null);
+                _lastResult = noSpeech;
+                _wavPath = null;
+                _captureCancellation?.Dispose();
+                _captureCancellation = null;
+                Completed?.Invoke(this, noSpeech);
+                SetStage(PipelineStage.Idle);
+                return noSpeech;
+            }
 
-            var outputResult = await OutputOnUiAsync(text, _targetWindow, settings.OutputMethod, CancellationToken.None)
+            CleanupWav();
+
+            // 转写结束：立即释放会话资源并回到 Idle（不再停留在 Completed 过渡态），
+            // 使「上屏 / 结果展示」期间再次按快捷键也能正常唤醒。上屏用局部 target 变量，
+            // 不受后续新识别覆盖字段的影响。
+            var target = _targetWindow;
+            _wavPath = null;
+            _captureCancellation?.Dispose();
+            _captureCancellation = null;
+            SetStage(PipelineStage.Idle);
+
+            var outputResult = await OutputOnUiAsync(text, target, settings.OutputMethod, CancellationToken.None)
                 .ConfigureAwait(false);
 
             var result = new PipelineResult(text, true, captureResult.StopReason, outputResult, null);
             _lastResult = result;
-            _wavPath = null;
-            _captureCancellation?.Dispose();
-            _captureCancellation = null;
             Completed?.Invoke(this, result);
-            SetStage(PipelineStage.Idle);
             return result;
         }
         catch (Exception exception)
         {
             return await CompleteErrorAsync(exception).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// 判断转写文本是否无有效内容：空 / 纯标点，或仅是词典参考词汇的 echo（静音时
+    /// 模型可能把 prompt 里的参考词汇当作输出）。用于避免静音误上屏。
+    /// </summary>
+    private static bool IsEmptyOrHallucination(
+        string text,
+        IReadOnlyList<DictionaryEntry> dictionary,
+        bool dictionaryEnabled)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        // 剥离标点、符号与空白后的实际内容。
+        var meaningful = string.Empty;
+        foreach (var c in text)
+        {
+            if (!char.IsPunctuation(c) && !char.IsSymbol(c) && !char.IsWhiteSpace(c))
+            {
+                meaningful += c;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(meaningful))
+        {
+            return true;
+        }
+
+        // 词典幻觉：若输出仅由词典目标词组成（移除所有目标词后不剩内容），判定为 echo。
+        if (!dictionaryEnabled || dictionary.Count == 0)
+        {
+            return false;
+        }
+
+        var remaining = meaningful;
+        foreach (var entry in dictionary)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.Target))
+            {
+                remaining = remaining.Replace(entry.Target, string.Empty, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        return string.IsNullOrWhiteSpace(remaining);
     }
 
     private async Task<PipelineResult> CompleteErrorAsync(Exception exception)
