@@ -10,9 +10,9 @@ public enum OutputResult
 }
 
 /// <summary>
-/// 识别文本输出：焦点仍在目标窗口时，无条件优先 SendInput Unicode 全局注入
-/// （不依赖「目标是否可编辑」的判断，也不依赖剪贴板）；失败才复制剪贴板并自动粘贴
-/// （WM_PASTE → Ctrl+V）。焦点丢失则仅复制剪贴板。全程不激活本程序窗口。
+/// 识别文本输出：焦点仍在目标窗口且目标控件可编辑时，优先 SendInput Unicode 全局注入
+/// （不依赖剪贴板）；失败才复制剪贴板并自动粘贴（WM_PASTE → Ctrl+V）。
+/// 焦点丢失或目标不可编辑则仅复制剪贴板。全程不激活本程序窗口。
 /// </summary>
 public sealed class TextOutputService
 {
@@ -36,11 +36,13 @@ public sealed class TextOutputService
 
         var foreground = User32.GetForegroundWindow();
         var targetStillFocused = targetWindow != IntPtr.Zero && foreground == targetWindow;
+        var focusWindow = User32.GetFocusedWindow(foreground);
+        var editable = focusWindow != IntPtr.Zero && InputFieldDetector.IsEditableTarget(focusWindow);
 
-        // SendInput 是全局键盘注入：只要焦点仍在原窗口，就直接把 Unicode 文本敲进去，
-        // 无需预先判断目标控件是否「可编辑」（对浏览器/聊天框/编辑器/终端均有效），
+        // SendInput 是全局键盘注入：只要焦点仍在原窗口且焦点控件可编辑，
+        // 就直接把 Unicode 文本敲进去（对浏览器/聊天框/编辑器/终端均有效），
         // 也不依赖剪贴板（规避剪贴板被占用的问题）。
-        if (targetStillFocused && User32.SendUnicodeText(text))
+        if (targetStillFocused && editable && User32.SendUnicodeText(text))
         {
             _logger.Info("Sent text via SendInput (Unicode).");
             return OutputResult.SentToTarget;
@@ -51,6 +53,10 @@ public sealed class TextOutputService
             _logger.Warn(
                 $"Focus lost (expected=0x{targetWindow.ToInt64():X}, actual=0x{foreground.ToInt64():X}); clipboard only.");
         }
+        else if (!editable)
+        {
+            _logger.Info("Target is not editable; skipping direct input and auto-paste, clipboard only.");
+        }
 
         // 兜底：复制剪贴板 + 自动粘贴。
         var copied = await CopyToClipboardAsync(text, cancellationToken);
@@ -59,10 +65,9 @@ public sealed class TextOutputService
             return OutputResult.Failed;
         }
 
-        if (targetStillFocused)
+        if (targetStillFocused && editable)
         {
-            var focus = User32.GetFocusedWindow(foreground);
-            if (User32.SendWmPaste(focus))
+            if (User32.SendWmPaste(focusWindow))
             {
                 _logger.Info("Pasted text via WM_PASTE.");
                 return OutputResult.SentToTarget;

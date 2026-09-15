@@ -20,10 +20,16 @@ public sealed class LlamaServerManager : IDisposable
     /// <summary>转写多少次后主动重启 llama-server，释放长期运行累积的显存/内存碎片，避免识别渐慢。</summary>
     private const int RestartAfterTranscripts = 50;
 
+    /// <summary>启动失败诊断用的最近输出环形缓冲区容量（stdout/stderr 合并缓存）。</summary>
+    private const int MaxRecentOutputLines = 50;
+
     private readonly AppLogger _logger;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _startupLock = new(1, 1);
     private readonly ChildProcessJob? _job;
+
+    private readonly object _outputLock = new();
+    private readonly Queue<string> _recentOutput = new();
 
     private Process? _process;
     private HttpClient? _httpClient;
@@ -282,6 +288,11 @@ public sealed class LlamaServerManager : IDisposable
             throw new InvalidOperationException("llama-server process could not be started.");
         }
 
+        lock (_outputLock)
+        {
+            _recentOutput.Clear();
+        }
+
         lock (_sync)
         {
             _process = process;
@@ -327,6 +338,24 @@ public sealed class LlamaServerManager : IDisposable
 
         ServerLog?.Invoke(this, line);
         _logger.Debug($"[llama-server] {line}");
+
+        lock (_outputLock)
+        {
+            _recentOutput.Enqueue(line);
+            while (_recentOutput.Count > MaxRecentOutputLines)
+            {
+                _recentOutput.Dequeue();
+            }
+        }
+    }
+
+    /// <summary>返回当前 llama-server 进程最近的 stdout/stderr 输出（供启动失败诊断）。</summary>
+    private string GetRecentOutput()
+    {
+        lock (_outputLock)
+        {
+            return string.Join(Environment.NewLine, _recentOutput);
+        }
     }
 
     private async Task WaitForHealthAsync(Process process, CancellationToken cancellationToken)
@@ -343,7 +372,11 @@ public sealed class LlamaServerManager : IDisposable
 
             if (process.HasExited)
             {
-                throw new InvalidOperationException($"llama-server exited during startup with code {process.ExitCode}.");
+                var detail = GetRecentOutput();
+                var suffix = string.IsNullOrWhiteSpace(detail)
+                    ? string.Empty
+                    : $"{Environment.NewLine}llama-server 最近输出：{Environment.NewLine}{detail}";
+                throw new InvalidOperationException($"llama-server exited during startup with code {process.ExitCode}.{suffix}");
             }
 
             try

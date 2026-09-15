@@ -89,6 +89,10 @@ dotnet publish src/BaiYunGe/BaiYunGe.csproj -c Release -r win-x64 --self-contain
 - **输入**：SendInput Unicode 直接键入，剪贴板 + 自动粘贴兜底
 - **安装**：Inno Setup 7，自包含运行时（目标机无需预装 .NET），Win10/11 x64 通用
 
+## 交流群
+
+欢迎加入 QQ 交流群：**587324335**
+
 ## 许可证
 
 [MIT](LICENSE)
