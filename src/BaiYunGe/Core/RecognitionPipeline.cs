@@ -240,13 +240,13 @@ public sealed class RecognitionPipeline : IDisposable
             return cancelled;
         }
 
-        // 能量 VAD 对低电平/降噪麦克风不可靠（语音峰值可低至 -60dB），
-        // 故不做能量门控，仅凭「录音时长」判断是否有内容，交给 llama-server 自行识别。
-        // 录音过短（<0.3s）视为误触丢弃。
-        if (captureResult.Duration < TimeSpan.FromMilliseconds(300))
+        // 丢弃两种情况：录音过短（误触）或 VAD 判定无语音（静音/纯杂音）。
+        // VAD 用「噪声地板中位数 + 12dB」的相对阈值判断，能区分稳定杂音与语音，
+        // 从源头阻止静音/杂音被提交转写（否则 llama-server 会幻觉输出词典词等随机内容）。
+        if (captureResult.Duration < TimeSpan.FromMilliseconds(300) || !captureResult.HasSpeech)
         {
             _logger.Info(
-                $"Too short: peak={captureResult.PeakRmsDb:F1}dB stopReason={captureResult.StopReason} " +
+                $"No speech: peak={captureResult.PeakRmsDb:F1}dB hasSpeech={captureResult.HasSpeech} " +
                 $"duration={captureResult.Duration.TotalSeconds:F1}s");
             CleanupWav();
             var noSpeech = new PipelineResult(string.Empty, false, captureResult.StopReason, OutputResult.Failed, null);
