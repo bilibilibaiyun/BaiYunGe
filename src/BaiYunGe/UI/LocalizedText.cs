@@ -81,6 +81,8 @@ public sealed class LocalizedText
         ["Update.UpToDate"] = ("已是最新版本", "You are up to date"),
         ["Update.Failed"] = ("检查更新失败（网络不可用）", "Update check failed (network unavailable)"),
         ["Update.NewVersion"] = ("发现新版本", "New version available"),
+        ["Update.UpdateNow"] = ("立即更新", "Update Now"),
+        ["Update.AutoCheck"] = ("启动时自动检查更新", "Check for updates at startup"),
         ["Update.CurrentVersion"] = ("当前版本", "Current version"),
         ["Update.LatestVersion"] = ("最新版本", "Latest version"),
         ["Update.Downloading"] = ("正在下载更新 {0} / {1}", "Downloading update {0} / {1}"),

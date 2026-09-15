@@ -2,8 +2,9 @@ namespace BaiYunGe.Core.Audio;
 
 /// <summary>
 /// 能量 VAD，参考旧版健壮实现，并针对降噪麦克风调优：
-/// 1) 前 250ms 用「中位数」校准噪声地板（抗用户提前说话导致的尖峰干扰），
-///    语音阈值 = max(语音下限, min(-36, 噪声地板+12))，动态自适应；
+/// 1) 前 250ms 用「低分位（25%）」校准噪声地板，并排除明显语音帧（> -40dB），
+///    避免「按住立即说话」时校准被语音污染、噪声地板被抬高；
+///    语音阈值 = max(语音下限, min(-36, 噪声地板+8))，动态自适应；
 /// 2) 语音判定下限大幅放宽（-54dB），适配降噪麦克风整体电平偏低（实测 -50~-60dB）的场景；
 /// 3) 只有「检测到语音之后」才开始累计静音时长（避免按住键未开口被提前停止）；
 /// 4) 提交前的有效语音判定用宽松下限 -68dB。
@@ -58,14 +59,19 @@ public sealed class VoiceActivityDetector
 
         _peakRmsDb = Math.Max(_peakRmsDb, rmsDb);
 
-        // 前 250ms 采集噪声地板样本。
+        // 前 250ms 采集噪声地板样本。明显高于底噪（> -40dB）的帧视为语音，不计入校准，
+        // 避免「按住立即说话」时校准样本被语音污染、噪声地板被抬高。
         if (_calibrationElapsedMs < CalibrationDurationMs)
         {
-            _calibrationSamples.Add(rmsDb);
+            if (rmsDb <= -40)
+            {
+                _calibrationSamples.Add(rmsDb);
+            }
+
             _calibrationElapsedMs += frameSeconds * 1000.0;
             if (_calibrationElapsedMs >= CalibrationDurationMs && _calibrationSamples.Count > 0)
             {
-                _noiseFloorDb = Median(_calibrationSamples);
+                _noiseFloorDb = Percentile25(_calibrationSamples);
             }
         }
 
@@ -109,13 +115,13 @@ public sealed class VoiceActivityDetector
             return _speechFloorDb;
         }
 
-        return Math.Max(_speechFloorDb, Math.Min(-36, _noiseFloorDb + 12));
+        return Math.Max(_speechFloorDb, Math.Min(-36, _noiseFloorDb + 8));
     }
 
-    private static double Median(List<double> samples)
+    private static double Percentile25(List<double> samples)
     {
         var sorted = samples.OrderBy(x => x).ToArray();
-        var mid = sorted.Length / 2;
-        return sorted.Length % 2 == 0 ? (sorted[mid - 1] + sorted[mid]) / 2.0 : sorted[mid];
+        var index = Math.Clamp((int)(sorted.Length * 0.25), 0, sorted.Length - 1);
+        return sorted[index];
     }
 }

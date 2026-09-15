@@ -24,6 +24,9 @@ public sealed class AppSettings
 
     public bool AutoStart { get; set; }
 
+    /// <summary>启动时是否静默检查更新（可在设置中关闭，保持完全离线）。</summary>
+    public bool AutoCheckUpdate { get; set; } = true;
+
     /// <summary>唤醒快捷键文本，例如 "Ctrl+`"。空表示未设置。</summary>
     public string KeyboardShortcut { get; set; } = "Ctrl+Win";
 
@@ -33,7 +36,7 @@ public sealed class AppSettings
     public string MicDeviceId { get; set; } = string.Empty;
 
     /// <summary>最长录音时长（秒）。0 或负数表示不限时长（仅靠静音超时/松开按键结束）。</summary>
-    public int MaxRecordSeconds { get; set; }
+    public int MaxRecordSeconds { get; set; } = 60;
 
     public int SilenceStopMs { get; set; } = 1200;
 
@@ -75,6 +78,7 @@ public sealed class AppSettings
             Theme = Theme,
             ThemeMigrated = ThemeMigrated,
             AutoStart = AutoStart,
+            AutoCheckUpdate = AutoCheckUpdate,
             KeyboardShortcut = KeyboardShortcut,
             KeyboardMode = KeyboardMode,
             MicDeviceId = MicDeviceId,

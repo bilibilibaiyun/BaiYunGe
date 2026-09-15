@@ -47,7 +47,7 @@ public sealed class DictionaryProcessor
         }
 
         var result = text;
-        foreach (var entry in dictionary.OrderByDescending(e => e.Alias.Length))
+        foreach (var entry in dictionary.Where(e => e?.Alias is not null).OrderByDescending(e => e.Alias.Length))
         {
             if (string.IsNullOrWhiteSpace(entry.Alias) || string.IsNullOrWhiteSpace(entry.Target))
             {

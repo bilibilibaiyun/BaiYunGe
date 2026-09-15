@@ -122,7 +122,7 @@ public sealed class RecognitionPipeline : IDisposable
             _captureTask = _audioCapture.StartAsync(
                 settings.MicDeviceId,
                 _wavPath,
-                0, // 0 = 不限录音时长。
+                settings.MaxRecordSeconds,
                 silenceStopMs,
                 settings.VadSensitivity,
                 _captureCancellation.Token);
@@ -241,8 +241,8 @@ public sealed class RecognitionPipeline : IDisposable
         }
 
         // 丢弃两种情况：录音过短（误触）或 VAD 判定无语音（静音/纯杂音）。
-        // VAD 用「噪声地板中位数 + 12dB」的相对阈值判断，能区分稳定杂音与语音，
-        // 从源头阻止静音/杂音被提交转写（否则 llama-server 会幻觉输出词典词等随机内容）。
+        // VAD 用「噪声地板低分位 + 8dB」的相对阈值判断，能区分稳定杂音与语音，
+        // 从源头阻止静音/杂音被提交转写。
         if (captureResult.Duration < TimeSpan.FromMilliseconds(300) || !captureResult.HasSpeech)
         {
             _logger.Info(
@@ -285,10 +285,10 @@ public sealed class RecognitionPipeline : IDisposable
                 _captureCancellation?.Token ?? CancellationToken.None).ConfigureAwait(false);
 
             var parsed = _parser.Parse(rawText);
-            var text = _dictionary.ReplaceAliases(parsed.Text, settings.Dictionary, settings.DictionaryEnabled);
+            // 词典列表可能在 UI 线程被增删：枚举前先快照，避免跨线程 Collection modified。
+            var text = _dictionary.ReplaceAliases(parsed.Text, settings.Dictionary.ToList(), settings.DictionaryEnabled);
 
-            // 静音 / 词典幻觉检测：转写结果为空、纯标点，或只是参考词汇的 echo 时，
-            // 视为无有效语音，不键入任何内容（修复「按住快捷键不说话、松开后自动键入词典内容」）。
+            // 有效性检测：转写结果为空或纯标点时视为无有效语音，不键入任何内容。
             if (IsEmptyOrHallucination(text, settings.Dictionary, settings.DictionaryEnabled))
             {
                 CleanupWav();
@@ -329,14 +329,18 @@ public sealed class RecognitionPipeline : IDisposable
     }
 
     /// <summary>
-    /// 判断转写文本是否无有效内容：空 / 纯标点，或仅是词典参考词汇的 echo（静音时
-    /// 模型可能把 prompt 里的参考词汇当作输出）。用于避免静音误上屏。
+    /// 判断转写文本是否无有效内容：空 / 纯标点。VAD（v2.1.1 恢复）已从源头拦截静音/杂音，
+    /// 因此不再做「移除词典词后为空即判 echo」的检测——那会把用户说出的词典词整句误杀。
     /// </summary>
     private static bool IsEmptyOrHallucination(
         string text,
         IReadOnlyList<DictionaryEntry> dictionary,
         bool dictionaryEnabled)
     {
+        // 保留参数与签名不变：词典 echo 检测已移除，静音/杂音由 VAD 负责拦截。
+        _ = dictionary;
+        _ = dictionaryEnabled;
+
         if (string.IsNullOrWhiteSpace(text))
         {
             return true;
@@ -352,36 +356,14 @@ public sealed class RecognitionPipeline : IDisposable
             }
         }
 
-        if (string.IsNullOrWhiteSpace(meaningful))
-        {
-            return true;
-        }
-
-        // 词典幻觉：若输出仅由词典词（目标词或别名）组成（移除后不剩内容），判定为 echo。
-        if (!dictionaryEnabled || dictionary.Count == 0)
-        {
-            return false;
-        }
-
-        var remaining = meaningful;
-        foreach (var entry in dictionary)
-        {
-            if (!string.IsNullOrWhiteSpace(entry.Target))
-            {
-                remaining = remaining.Replace(entry.Target, string.Empty, StringComparison.OrdinalIgnoreCase);
-            }
-
-            if (!string.IsNullOrWhiteSpace(entry.Alias))
-            {
-                remaining = remaining.Replace(entry.Alias, string.Empty, StringComparison.OrdinalIgnoreCase);
-            }
-        }
-
-        return string.IsNullOrWhiteSpace(remaining);
+        return string.IsNullOrWhiteSpace(meaningful);
     }
 
     private async Task<PipelineResult> CompleteErrorAsync(Exception exception)
     {
+        CleanupWav();
+        _wavPath = null;
+
         var result = new PipelineResult(string.Empty, false, AudioCaptureStopReason.Error, OutputResult.Failed, exception);
         _lastResult = result;
         _logger.Error("Recognition failed.", exception);
@@ -425,7 +407,8 @@ public sealed class RecognitionPipeline : IDisposable
             return string.Empty;
         }
 
-        var words = _dictionary.BuildPrompt(settings.Dictionary, true);
+        // 词典列表可能在 UI 线程被增删：枚举前先快照，避免跨线程 Collection modified。
+        var words = _dictionary.BuildPrompt(settings.Dictionary.ToList(), true);
         return string.IsNullOrWhiteSpace(words) ? string.Empty : $"{settings.PromptPrefix}{words}";
     }
 

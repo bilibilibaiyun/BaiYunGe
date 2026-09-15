@@ -98,7 +98,7 @@ public sealed class KeyboardHotkeyService : IDisposable
             _recordingHotkey = false;
         }
 
-        RecordCancelled?.Invoke();
+        RaiseAsync(() => RecordCancelled?.Invoke());
     }
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
@@ -299,7 +299,7 @@ public sealed class KeyboardHotkeyService : IDisposable
             _recordingHotkey = false;
         }
 
-        RecordCancelled?.Invoke();
+        RaiseAsync(() => RecordCancelled?.Invoke());
         return true;
     }
 
@@ -333,7 +333,7 @@ public sealed class KeyboardHotkeyService : IDisposable
             _hotkey = captured;
         }
 
-        HotkeyRecorded?.Invoke(captured);
+        RaiseAsync(() => HotkeyRecorded?.Invoke(captured));
         return true;
     }
 

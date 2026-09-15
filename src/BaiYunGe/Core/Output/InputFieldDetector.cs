@@ -22,6 +22,31 @@ public static class InputFieldDetector
         "WindowsForms10.EDIT.app"
     };
 
+    private static readonly HashSet<string> NonEditableWindowClasses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SysListView32",
+        "SHELLDLL_DefView",
+        "Progman",
+        "WorkerW",
+        "DirectUIHWND",
+        "SysTreeView32"
+    };
+
+    /// <summary>
+    /// 黑名单判断：明确不可编辑的目标（桌面图标列表/桌面/资源管理器外壳）返回 true；
+    /// 其余（含 UIA 失败、Edit/Document、终端等）一律返回 false（视为可键入）。
+    /// </summary>
+    public static bool IsKnownNonEditable(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var className = GetClassName(hwnd);
+        return !string.IsNullOrEmpty(className) && NonEditableWindowClasses.Contains(className);
+    }
+
     public static bool IsEditableTarget(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero)

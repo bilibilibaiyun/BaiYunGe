@@ -47,7 +47,9 @@ public partial class App : Application
         _mutex = new Mutex(true, MutexName, out var isNew);
         if (!isNew)
         {
-            Shutdown();
+            // 第二实例未获得互斥体所有权：直接干净退出，不走 OnExit（否则 ReleaseMutex
+            // 会对未持有的互斥体抛 ApplicationException）。
+            Environment.Exit(0);
             return;
         }
 
@@ -131,7 +133,11 @@ public partial class App : Application
         }
 
         // 后台静默检测新版本，结果缓存供设置页显示（打开设置页即可看到是否有新版）。
-        _ = CheckUpdateSilentlyAsync();
+        // 用户可在设置中关闭（离线承诺），关闭后启动不访问网络。
+        if (_settings!.AutoCheckUpdate)
+        {
+            _ = CheckUpdateSilentlyAsync();
+        }
     }
 
     /// <summary>静默更新检测完成时触发（供设置页刷新状态显示）。</summary>
@@ -216,7 +222,7 @@ public partial class App : Application
                 // 延迟预热：等软件启动稳定（托盘就绪、UI 响应）后再加载模型，
                 // 避免启动早期（尤其更新覆盖安装后）模型大文件磁盘 I/O 与 GPU 探测
                 // 抢占资源，导致自启动缓慢、界面卡顿。首次识别若早于此时仍会走懒启动。
-                await Task.Delay(TimeSpan.FromSeconds(15));
+                await Task.Delay(TimeSpan.FromSeconds(5));
 
                 // 显示预热提示（不抢焦点浮窗，纯文字无电平条）。
                 await Dispatcher.InvokeAsync(() =>
@@ -453,6 +459,10 @@ public partial class App : Application
             {
                 _overlay.ShowMessage($"{_text!.Get("Overlay.Error")}: {result.Error.Message}");
             }
+            else if (result.StopReason == AudioCaptureStopReason.Cancelled)
+            {
+                _overlay.ShowMessage(_text!.Get("Overlay.Cancelled"));
+            }
             else if (!result.HasSpeech)
             {
                 _overlay.ShowMessage(_text!.Get("Overlay.NoSpeech"));
@@ -525,6 +535,8 @@ public partial class App : Application
                 await _server!.StopAsync();
                 WarmupServerInBackground();
             };
+            // 替换 .gguf 前先停 llama-server，释放文件句柄，避免 File.Move 失败。
+            _mainWindow.ModelReplacing += async () => await _server!.StopAsync();
         }
 
         if (focusModel)
@@ -547,7 +559,15 @@ public partial class App : Application
         _tray?.Dispose();
         _overlay?.Close();
         _logger?.Dispose();
-        _mutex?.ReleaseMutex();
+        try
+        {
+            _mutex?.ReleaseMutex();
+        }
+        catch (Exception)
+        {
+            // 未持有互斥体等情况下 ReleaseMutex 会抛异常；退出路径忽略即可。
+        }
+
         base.OnExit(e);
     }
 

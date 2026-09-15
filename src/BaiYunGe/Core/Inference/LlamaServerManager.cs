@@ -490,9 +490,9 @@ public sealed class LlamaServerManager : IDisposable
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = System.Text.Encoding.UTF8,
-                StandardErrorEncoding = System.Text.Encoding.UTF8
+                // stderr 不重定向：避免写满管道导致子进程卡死；探测失败回退默认设备即可。
+                RedirectStandardError = false,
+                StandardOutputEncoding = System.Text.Encoding.UTF8
             };
             using var process = Process.Start(startInfo);
             if (process is null)
@@ -501,8 +501,26 @@ public sealed class LlamaServerManager : IDisposable
                 return null;
             }
 
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(8000);
+            // 带超时读取 stdout：5 秒内未结束即 Kill 并回退默认设备，绝不永久挂起。
+            string output;
+            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+            {
+                try
+                {
+                    output = process.StandardOutput.ReadToEndAsync(cts.Token).GetAwaiter().GetResult();
+                }
+                catch (Exception exception)
+                {
+                    _logger.Warn($"GPU device probe read failed or timed out: {exception.Message}");
+                    TryKill(process);
+                    return null;
+                }
+            }
+
+            if (!process.WaitForExit(1000))
+            {
+                TryKill(process);
+            }
 
             string? discrete = null;
             string? first = null;
@@ -543,6 +561,21 @@ public sealed class LlamaServerManager : IDisposable
         {
             _logger.Warn($"GPU device probe failed: {exception.Message}");
             return null;
+        }
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+            // 忽略终止失败。
         }
     }
 
@@ -603,10 +636,21 @@ public sealed class LlamaServerManager : IDisposable
         }
 
         _disposed = true;
-        StopCoreAsync().GetAwaiter().GetResult();
+        // 先同步等待在途 EnsureStartedAsync 完成：避免其 finally Release 时锁已被 Dispose
+        // （抛 ObjectDisposedException），也避免其 catch-when(useGpu) 回退再拉起无 Job 保护的进程。
+        _startupLock.Wait();
+        try
+        {
+            StopCoreAsync().GetAwaiter().GetResult();
+        }
+        finally
+        {
+            _startupLock.Release();
+            _startupLock.Dispose();
+        }
+
         _job?.Dispose();
         _httpClient?.Dispose();
-        _startupLock.Dispose();
     }
 
     private void ThrowIfDisposed()

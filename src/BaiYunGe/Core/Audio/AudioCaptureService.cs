@@ -249,7 +249,7 @@ public sealed class AudioCaptureService : IDisposable
             if (Interlocked.Exchange(ref _stopState, 1) != 0)
             {
                 // 已停止：等待既有结果。
-                return Completion.Task.IsCompleted ? Completion.Task.Result : AudioCaptureResult.Empty;
+                return Completion.Task.IsCompletedSuccessfully ? Completion.Task.Result : AudioCaptureResult.Empty;
             }
 
             _clock.Stop();

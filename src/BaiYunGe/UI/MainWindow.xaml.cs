@@ -38,6 +38,8 @@ public partial class MainWindow : Window
     private ProgressBar? _modelProgress;
     private TextBlock? _modelStatus;
     private TextBlock? _updateStatus;
+    private Button? _updateButton;
+    private CheckBox? _autoCheckUpdate;
 
     public MainWindow(
         LocalizedText text,
@@ -74,6 +76,8 @@ public partial class MainWindow : Window
     public event Action? SettingsChanged;
 
     public event Action? ModelInstalled;
+
+    public event Func<Task>? ModelReplacing;
 
     private void RefreshLocalization()
     {
@@ -211,6 +215,32 @@ public partial class MainWindow : Window
         var checkButton = new Button { Content = _text.Get("Update.Check") };
         checkButton.Click += async (_, _) => await CheckForUpdateAsync();
         panel.Children.Add(checkButton);
+
+        _updateButton = new Button
+        {
+            Content = string.Empty,
+            Visibility = Visibility.Collapsed,
+            Margin = new Thickness(0, 6, 0, 0)
+        };
+        _updateButton.Click += async (_, _) =>
+        {
+            if (System.Windows.Application.Current is App { LatestUpdateInfo: { HasUpdate: true } info } &&
+                !string.IsNullOrWhiteSpace(info.DownloadUrl))
+            {
+                await DownloadAndInstallUpdateAsync(info.DownloadUrl, info.LatestVersion);
+            }
+        };
+        panel.Children.Add(_updateButton);
+
+        _autoCheckUpdate = new CheckBox
+        {
+            Content = _text.Get("Update.AutoCheck"),
+            IsChecked = _settings.AutoCheckUpdate,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        _autoCheckUpdate.Checked += (_, _) => { _settings.AutoCheckUpdate = true; Save(); };
+        _autoCheckUpdate.Unchecked += (_, _) => { _settings.AutoCheckUpdate = false; Save(); };
+        panel.Children.Add(_autoCheckUpdate);
 
         _updateStatus = new TextBlock
         {
@@ -406,7 +436,7 @@ public partial class MainWindow : Window
 
             var summary = await _downloader.DownloadAsync(
                 directory,
-                beforeFileReplaceAsync: null,
+                beforeFileReplaceAsync: () => ModelReplacing?.Invoke() ?? Task.CompletedTask,
                 progress,
                 CancellationToken.None);
 
@@ -648,18 +678,35 @@ public partial class MainWindow : Window
         if (!app.IsUpdateCheckCompleted)
         {
             _updateStatus.Text = _text.Get("Update.Checking");
+            HideUpdateButton();
         }
         else if (app.LatestUpdateInfo is { HasUpdate: true } info)
         {
             _updateStatus.Text = $"{_text.Get("Update.NewVersion")}：v{info.LatestVersion}";
+            if (_updateButton is not null)
+            {
+                _updateButton.Content = $"{_text.Get("Update.UpdateNow")} v{info.LatestVersion}";
+                _updateButton.Visibility = Visibility.Visible;
+            }
         }
         else if (app.LatestUpdateInfo is not null)
         {
             _updateStatus.Text = _text.Get("Update.UpToDate");
+            HideUpdateButton();
         }
         else
         {
             _updateStatus.Text = _text.Get("Update.Failed");
+            HideUpdateButton();
+        }
+    }
+
+    /// <summary>隐藏「立即更新」按钮（检测中/无新版/失败时）。</summary>
+    private void HideUpdateButton()
+    {
+        if (_updateButton is not null)
+        {
+            _updateButton.Visibility = Visibility.Collapsed;
         }
     }
 
