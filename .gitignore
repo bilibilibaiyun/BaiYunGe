@@ -34,3 +34,7 @@ testdata/
 *.user
 *.suo
 Thumbs.db
+
+# 构建排查临时文件
+build-*.txt
+build-*.log
