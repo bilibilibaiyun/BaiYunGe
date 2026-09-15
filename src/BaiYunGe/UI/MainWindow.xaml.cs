@@ -760,8 +760,9 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK, MessageBoxImage.Information);
 
             // 写延迟启动脚本：等待软件完全退出后，再启动安装包静默覆盖安装。
+            // 用 UTF-8 BOM 写入，避免中文用户名路径（%TEMP% 含中文）被 cmd 按 ANSI 解码乱码。
             var scriptPath = Path.Combine(tempDir, "baiyunge_update.cmd");
-            await File.WriteAllTextAsync(scriptPath, BuildUpdateScript(installerPath));
+            await File.WriteAllTextAsync(scriptPath, BuildUpdateScript(installerPath), new System.Text.UTF8Encoding(true));
 
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/C \"{scriptPath}\"")
             {

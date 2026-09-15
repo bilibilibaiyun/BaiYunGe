@@ -71,7 +71,7 @@ public sealed class VoiceActivityDetector
             _calibrationElapsedMs += frameSeconds * 1000.0;
             if (_calibrationElapsedMs >= CalibrationDurationMs && _calibrationSamples.Count > 0)
             {
-                _noiseFloorDb = Percentile25(_calibrationSamples);
+                _noiseFloorDb = Median(_calibrationSamples);
             }
         }
 
@@ -115,13 +115,13 @@ public sealed class VoiceActivityDetector
             return _speechFloorDb;
         }
 
-        return Math.Max(_speechFloorDb, Math.Min(-36, _noiseFloorDb + 8));
+        return Math.Max(_speechFloorDb, Math.Min(-36, _noiseFloorDb + 12));
     }
 
-    private static double Percentile25(List<double> samples)
+    private static double Median(List<double> samples)
     {
         var sorted = samples.OrderBy(x => x).ToArray();
-        var index = Math.Clamp((int)(sorted.Length * 0.25), 0, sorted.Length - 1);
-        return sorted[index];
+        var mid = sorted.Length / 2;
+        return sorted.Length % 2 == 0 ? (sorted[mid - 1] + sorted[mid]) / 2.0 : sorted[mid];
     }
 }
