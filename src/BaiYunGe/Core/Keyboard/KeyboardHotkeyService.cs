@@ -168,12 +168,6 @@ public sealed class KeyboardHotkeyService : IDisposable
             return false;
         }
 
-        // 纯修饰键（Ctrl/Alt/Shift）不参与主键判定；Win 键允许作主键（Ctrl+Win）。
-        if (NativeMethods.IsCtrlAltShift(vkCode))
-        {
-            return false;
-        }
-
         // 主键抬起：无论修饰键是否已提前松开，都复位按下状态，避免状态卡死。
         if (isUp && vkCode == hotkey.Key)
         {
@@ -186,10 +180,23 @@ public sealed class KeyboardHotkeyService : IDisposable
             return suppressKey == vkCode;
         }
 
-        var mods = NativeMethods.ModifierState();
-        // Win 键作为主键时，其自身的按下状态不应再计为修饰键。
-        var winModifier = mods.Win && !NativeMethods.IsWinKey(vkCode);
-        if (!hotkey.Matches(mods.Ctrl, mods.Alt, mods.Shift, winModifier, vkCode))
+        if (isUp)
+        {
+            return false;
+        }
+
+        // 只处理「主键」与「修饰键（Ctrl/Alt/Shift）」的按下；Win 键作主键时在此判定。
+        var isPrimary = vkCode == hotkey.Key;
+        var isModifier = NativeMethods.IsCtrlAltShift(vkCode);
+        if (!isPrimary && !isModifier)
+        {
+            return false;
+        }
+
+        // 组合是否齐备：主键已按下 + 各修饰键状态匹配。无论主键还是修饰键先按下，
+        // 只要组合凑齐就触发，从而支持「同时按下」快捷键（主键 keydown 先到时修饰键
+        // 可能尚未按下，等修饰键 keydown 到达时再判定一次即可命中）。
+        if (!IsComboDown(hotkey, vkCode))
         {
             return false;
         }
@@ -208,6 +215,33 @@ public sealed class KeyboardHotkeyService : IDisposable
 
         RaiseAsync(() => WakePressed?.Invoke(this, EventArgs.Empty));
         return false;
+    }
+
+    /// <summary>
+    /// 判断唤醒组合是否齐备：主键已按下，且各修饰键实时状态与快捷键定义一致。
+    /// 用 GetAsyncKeyState 查询硬件实时状态，避免低级钩子回调里 GetKeyState 状态陈旧。
+    /// </summary>
+    private static bool IsComboDown(HotkeyDefinition hotkey, int vkCode)
+    {
+        // 主键是否已按下：当前事件即主键，或主键已物理按下。
+        var primaryDown = vkCode == hotkey.Key || NativeMethods.IsKeyDown(hotkey.Key);
+        if (!primaryDown)
+        {
+            return false;
+        }
+
+        var ctrlDown = NativeMethods.IsKeyDown(NativeMethods.VK_LCONTROL) || NativeMethods.IsKeyDown(NativeMethods.VK_RCONTROL);
+        var altDown = NativeMethods.IsKeyDown(NativeMethods.VK_LMENU) || NativeMethods.IsKeyDown(NativeMethods.VK_RMENU);
+        var shiftDown = NativeMethods.IsKeyDown(NativeMethods.VK_LSHIFT) || NativeMethods.IsKeyDown(NativeMethods.VK_RSHIFT);
+        var winDown = NativeMethods.IsKeyDown(NativeMethods.VK_LWIN) || NativeMethods.IsKeyDown(NativeMethods.VK_RWIN);
+
+        // Win 作为修饰键：Win 键按下且主键不是 Win 键（主键是 Win 时它不算修饰键）。
+        var winModifier = winDown && !NativeMethods.IsWinKey(hotkey.Key);
+
+        return ctrlDown == hotkey.Ctrl &&
+               altDown == hotkey.Alt &&
+               shiftDown == hotkey.Shift &&
+               winModifier == hotkey.Win;
     }
 
     /// <summary>标记唤醒键已按下；若已处于按下状态（自动重复）返回 false。</summary>

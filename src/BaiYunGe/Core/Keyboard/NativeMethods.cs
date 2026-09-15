@@ -50,6 +50,15 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern short GetKeyState(int nVirtKey);
 
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
+
+    /// <summary>查询键的实时物理按下状态（GetAsyncKeyState 高位，与线程消息队列无关）。</summary>
+    public static bool IsKeyDown(int vkCode)
+    {
+        return (GetAsyncKeyState(vkCode) & 0x8000) != 0;
+    }
+
     public static bool IsModifier(int vkCode)
     {
         return vkCode is VK_LCONTROL or VK_RCONTROL or VK_LSHIFT or VK_RSHIFT or VK_LMENU or VK_RMENU or VK_LWIN or VK_RWIN;
@@ -69,12 +78,13 @@ internal static class NativeMethods
 
     public static (bool Ctrl, bool Alt, bool Shift, bool Win) ModifierState()
     {
-        static bool Down(int vk) => (GetKeyState(vk) & 0x8000) != 0;
-
+        // 用 GetAsyncKeyState（硬件实时状态），而非 GetKeyState（线程消息队列状态）。
+        // 低级键盘钩子回调里 GetKeyState 可能返回陈旧状态，导致「同时按下修饰键+主键」
+        // 时主键 keydown 先到、查询修饰键却显示未按下，组合唤醒失败。
         return (
-            Down(VK_LCONTROL) || Down(VK_RCONTROL),
-            Down(VK_LMENU) || Down(VK_RMENU),
-            Down(VK_LSHIFT) || Down(VK_RSHIFT),
-            Down(VK_LWIN) || Down(VK_RWIN));
+            IsKeyDown(VK_LCONTROL) || IsKeyDown(VK_RCONTROL),
+            IsKeyDown(VK_LMENU) || IsKeyDown(VK_RMENU),
+            IsKeyDown(VK_LSHIFT) || IsKeyDown(VK_RSHIFT),
+            IsKeyDown(VK_LWIN) || IsKeyDown(VK_RWIN));
     }
 }
