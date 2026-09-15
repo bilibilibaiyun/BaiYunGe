@@ -25,17 +25,17 @@ public partial class OverlayWindow : Window
         Loaded += (_, _) =>
         {
             ApplyExtendedStyles();
-            PositionAtBottomRight();
+            PositionBottomCenter();
         };
     }
 
-    /// <summary>定位到主屏幕工作区右下角（系统通知常见位置，易于察觉）。</summary>
-    private void PositionAtBottomRight()
+    /// <summary>定位到主屏幕工作区底部水平居中（类似字幕条/输入提示条位置）。</summary>
+    private void PositionBottomCenter()
     {
         try
         {
             var area = SystemParameters.WorkArea;
-            Left = area.Right - ActualWidth - 24;
+            Left = area.Left + ((area.Width - ActualWidth) / 2);
             Top = area.Bottom - ActualHeight - 24;
         }
         catch
