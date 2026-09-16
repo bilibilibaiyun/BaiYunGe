@@ -44,16 +44,24 @@ public sealed class UpdateChecker
             var latestVersion = tagName.TrimStart('v', 'V');
             var notes = root.GetProperty("body").GetString() ?? string.Empty;
 
-            // 下载地址：根据当前架构匹配对应的安装包（x64 只更新 x64，arm64 只更新 arm64）。
-            var archSuffix = GetCurrentArchSuffix();
+            // 下载地址：按架构匹配安装包。x64 包为「标准版」（文件名不含 _arm64），
+            // arm64 包文件名含 "_arm64"。标准版命名让其在 GitHub 字母序中排在 arm64 前，
+            // 旧版本（无架构匹配、取第一个 .exe）也会拿到 x64 包，避免错配。
+            var isArm64 = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture ==
+                          System.Runtime.InteropServices.Architecture.Arm64;
             var downloadUrl = string.Empty;
             if (root.TryGetProperty("assets", out var assets) && assets.GetArrayLength() > 0)
             {
-                // 优先匹配当前架构的安装包（如 _x64_Setup.exe / _arm64_Setup.exe）。
                 foreach (var asset in assets.EnumerateArray())
                 {
                     var name = asset.GetProperty("name").GetString() ?? string.Empty;
-                    if (name.EndsWith(archSuffix, StringComparison.OrdinalIgnoreCase))
+                    if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var isArm64Asset = name.Contains("_arm64", StringComparison.OrdinalIgnoreCase);
+                    if (isArm64 == isArm64Asset)
                     {
                         downloadUrl = asset.GetProperty("browser_download_url").GetString() ?? string.Empty;
                         break;
@@ -101,14 +109,5 @@ public sealed class UpdateChecker
         }
 
         return 0;
-    }
-
-    /// <summary>返回当前进程架构对应的安装包文件后缀（用于从 release 资产中匹配正确架构）。</summary>
-    private static string GetCurrentArchSuffix()
-    {
-        return System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture ==
-               System.Runtime.InteropServices.Architecture.Arm64
-            ? "_arm64_Setup.exe"
-            : "_x64_Setup.exe";
     }
 }
