@@ -18,6 +18,15 @@ public sealed class VoiceActivityDetector
     /// <summary>连续超过阈值的帧数达到该值才判为语音，过滤瞬时环境杂音尖峰（键盘声、物体碰撞等）。</summary>
     private const int ConsecutiveSpeechFramesRequired = 3;
 
+    // 频谱分析参数：16kHz 采样，512 点 FFT，分辨率 31.25Hz。
+    // 人声能量集中在 300~3400Hz（语音频段），而风扇等持续低频杂音能量集中在 <300Hz。
+    private const int FftSize = 512;
+    private const int SampleRate = 16000;
+    private const int VoiceBandStartBin = 10;  // 约 312Hz
+    private const int VoiceBandEndBin = 109;   // 约 3406Hz
+    /// <summary>语音频段（300~3400Hz）能量占全频段（除 DC）的比例阈值，高于此值视为人声。</summary>
+    private const double VoiceRatioThreshold = 0.45;
+
     private readonly double _silenceStopMs;
     private readonly double _speechFloorDb;
     private readonly List<double> _calibrationSamples = new();
@@ -54,8 +63,8 @@ public sealed class VoiceActivityDetector
 
     public bool HasSpeech => _hasSpeech;
 
-    /// <summary>送入一帧（RMS dB、已录时长秒、帧时长秒）。</summary>
-    public void AddFrame(double rmsDb, double elapsedSeconds, double frameSeconds)
+    /// <summary>送入一帧（PCM 采样、RMS dB、已录时长秒、帧时长秒）。</summary>
+    public void AddFrame(float[] samples, double rmsDb, double elapsedSeconds, double frameSeconds)
     {
         if (!double.IsFinite(rmsDb))
         {
@@ -81,9 +90,13 @@ public sealed class VoiceActivityDetector
         }
 
         var threshold = ComputeThreshold();
-        if (rmsDb >= threshold)
+        // 人声判定：能量超过阈值，且语音频段（300~3400Hz）能量占优——用频谱区分持续低频杂音（风扇等）
+        // 与真实人声，这是能量阈值无法做到的。
+        var voiceRatio = ComputeVoiceRatio(samples);
+        var isVoice = rmsDb >= threshold && voiceRatio >= VoiceRatioThreshold;
+        if (isVoice)
         {
-            // 需要连续多帧超过阈值才判语音：瞬时杂音尖峰（单帧）不触发，持续的人声才会。
+            // 需要连续多帧判为语音才置位：瞬时杂音尖峰（单帧）不触发，持续的人声才会。
             _consecutiveSpeechFrames++;
             if (_consecutiveSpeechFrames >= ConsecutiveSpeechFramesRequired)
             {
@@ -135,5 +148,96 @@ public sealed class VoiceActivityDetector
         var sorted = samples.OrderBy(x => x).ToArray();
         var mid = sorted.Length / 2;
         return sorted.Length % 2 == 0 ? (sorted[mid - 1] + sorted[mid]) / 2.0 : sorted[mid];
+    }
+
+    /// <summary>
+    /// 计算语音频段（300~3400Hz）能量占全频段（除 DC 直流分量）的比例。
+    /// 人声能量集中在语音频段（占比高），风扇等持续低频杂音能量集中在 &lt;300Hz（占比低），
+    /// 白噪声各频段均匀（占比约 38%）。返回 0~1。
+    /// </summary>
+    private static double ComputeVoiceRatio(float[] samples)
+    {
+        if (samples is null || samples.Length == 0)
+        {
+            return 0;
+        }
+
+        // 补零到 FftSize，做实数 FFT（虚部置 0）。
+        var real = new double[FftSize];
+        var imag = new double[FftSize];
+        var count = Math.Min(samples.Length, FftSize);
+        for (var i = 0; i < count; i++)
+        {
+            real[i] = samples[i];
+        }
+
+        Fft(real, imag);
+
+        // 累加幅度谱能量（跳过 DC bin 0）。
+        double voiceEnergy = 0;
+        double totalEnergy = 0;
+        for (var i = 1; i < FftSize / 2; i++)
+        {
+            var energy = real[i] * real[i] + imag[i] * imag[i];
+            totalEnergy += energy;
+            if (i >= VoiceBandStartBin && i <= VoiceBandEndBin)
+            {
+                voiceEnergy += energy;
+            }
+        }
+
+        return totalEnergy <= 0 ? 0 : voiceEnergy / totalEnergy;
+    }
+
+    /// <summary>原地 Radix-2 Cooley-Tukey FFT（real/imag 为输入输出）。</summary>
+    private static void Fft(double[] real, double[] imag)
+    {
+        var n = real.Length;
+
+        // 位反转重排。
+        for (int i = 1, j = 0; i < n; i++)
+        {
+            var bit = n >> 1;
+            for (; (j & bit) != 0; bit >>= 1)
+            {
+                j ^= bit;
+            }
+
+            j ^= bit;
+            if (i < j)
+            {
+                (real[i], real[j]) = (real[j], real[i]);
+                (imag[i], imag[j]) = (imag[j], imag[i]);
+            }
+        }
+
+        // 蝶形运算。
+        for (var len = 2; len <= n; len <<= 1)
+        {
+            var angle = -2.0 * Math.PI / len;
+            var wLenReal = Math.Cos(angle);
+            var wLenImag = Math.Sin(angle);
+            for (var i = 0; i < n; i += len)
+            {
+                var wReal = 1.0;
+                var wImag = 0.0;
+                for (var k = 0; k < len / 2; k++)
+                {
+                    var uReal = real[i + k];
+                    var uImag = imag[i + k];
+                    var vReal = real[i + k + len / 2] * wReal - imag[i + k + len / 2] * wImag;
+                    var vImag = real[i + k + len / 2] * wImag + imag[i + k + len / 2] * wReal;
+                    real[i + k] = uReal + vReal;
+                    imag[i + k] = uImag + vImag;
+                    real[i + k + len / 2] = uReal - vReal;
+                    imag[i + k + len / 2] = uImag - vImag;
+
+                    var nextWReal = wReal * wLenReal - wImag * wLenImag;
+                    var nextWImag = wReal * wLenImag + wImag * wLenReal;
+                    wReal = nextWReal;
+                    wImag = nextWImag;
+                }
+            }
+        }
     }
 }

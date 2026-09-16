@@ -309,7 +309,7 @@ public sealed class AudioCaptureService : IDisposable
 
                 var rmsDb = CalculateRmsDb(resampled);
                 var frameSeconds = resampled.Length / (double)PcmAudioConverter.TargetSampleRate;
-                _vad.AddFrame(rmsDb, _clock.Elapsed.TotalSeconds, frameSeconds);
+                _vad.AddFrame(resampled, rmsDb, _clock.Elapsed.TotalSeconds, frameSeconds);
                 _levelCallback((float)rmsDb);
             }
             catch (Exception exception)
