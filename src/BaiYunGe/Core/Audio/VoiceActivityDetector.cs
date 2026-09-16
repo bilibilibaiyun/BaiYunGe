@@ -19,13 +19,15 @@ public sealed class VoiceActivityDetector
     private const int ConsecutiveSpeechFramesRequired = 3;
 
     // 频谱分析参数：16kHz 采样，512 点 FFT，分辨率 31.25Hz。
-    // 人声能量集中在 300~3400Hz（语音频段），而风扇等持续低频杂音能量集中在 <300Hz。
+    // 人声能量集中在语音频段，风扇等持续低频杂音能量集中在 <187Hz。
+    // 语音频段下限取 ~187Hz（bin 6）：中文低音调（如「你好」）的基频（100~200Hz）
+    // 与低次谐波在 300Hz 以下，若下限取 300Hz 会被排除导致语音占比偏低误判无语音。
     private const int FftSize = 512;
     private const int SampleRate = 16000;
-    private const int VoiceBandStartBin = 10;  // 约 312Hz
+    private const int VoiceBandStartBin = 6;   // 约 187Hz
     private const int VoiceBandEndBin = 109;   // 约 3406Hz
-    /// <summary>语音频段（300~3400Hz）能量占全频段（除 DC）的比例阈值，高于此值视为人声。</summary>
-    private const double VoiceRatioThreshold = 0.45;
+    /// <summary>语音频段能量占全频段（除 DC）的比例阈值，高于此值视为人声。</summary>
+    private const double VoiceRatioThreshold = 0.40;
 
     private readonly double _silenceStopMs;
     private readonly double _speechFloorDb;
@@ -39,6 +41,8 @@ public sealed class VoiceActivityDetector
     private bool _speechReported;
     private bool _silenceTimeoutReported;
     private int _consecutiveSpeechFrames;
+    private readonly List<float> _spectrumBuffer = new();
+    private double _lastVoiceRatio;
 
     public VoiceActivityDetector(int sensitivity, int silenceStopMs)
     {
@@ -62,6 +66,9 @@ public sealed class VoiceActivityDetector
     public double PeakRmsDb => _peakRmsDb;
 
     public bool HasSpeech => _hasSpeech;
+
+    /// <summary>最近一次频谱分析的语音频段能量占比（0~1，调试诊断用）。</summary>
+    public double LastVoiceRatio => _lastVoiceRatio;
 
     /// <summary>送入一帧（PCM 采样、RMS dB、已录时长秒、帧时长秒）。</summary>
     public void AddFrame(float[] samples, double rmsDb, double elapsedSeconds, double frameSeconds)
@@ -89,10 +96,20 @@ public sealed class VoiceActivityDetector
             }
         }
 
+        // 累积采样到 512（约 32ms）再做 FFT：10ms 短帧对低频（基频 100~200Hz）频谱泄漏严重，
+        // 累积到 32ms 后基频有 4~8 个周期，语音频段占比计算更准（修复「你好」等低音调词检测不到）。
+        _spectrumBuffer.AddRange(samples);
+        while (_spectrumBuffer.Count >= FftSize)
+        {
+            var frame = new float[FftSize];
+            _spectrumBuffer.CopyTo(0, frame, 0, FftSize);
+            _spectrumBuffer.RemoveRange(0, FftSize);
+            _lastVoiceRatio = ComputeVoiceRatio(frame);
+        }
+
         var threshold = ComputeThreshold();
-        // 人声判定：能量超过阈值，且语音频段（300~3400Hz）能量占优——用频谱区分持续低频杂音（风扇等）
-        // 与真实人声，这是能量阈值无法做到的。
-        var voiceRatio = ComputeVoiceRatio(samples);
+        // 人声判定：能量超过阈值，且语音频段能量占优——用频谱区分持续低频杂音（风扇等）与真实人声。
+        var voiceRatio = _lastVoiceRatio;
         var isVoice = rmsDb >= threshold && voiceRatio >= VoiceRatioThreshold;
         if (isVoice)
         {
@@ -162,13 +179,14 @@ public sealed class VoiceActivityDetector
             return 0;
         }
 
-        // 补零到 FftSize，做实数 FFT（虚部置 0）。
+        // 补零到 FftSize，做实数 FFT（虚部置 0）。加汉宁窗减少频谱泄漏（对短时低频尤其重要）。
         var real = new double[FftSize];
         var imag = new double[FftSize];
         var count = Math.Min(samples.Length, FftSize);
         for (var i = 0; i < count; i++)
         {
-            real[i] = samples[i];
+            var window = 0.5 * (1 - Math.Cos(2 * Math.PI * i / (count - 1)));
+            real[i] = samples[i] * window;
         }
 
         Fft(real, imag);

@@ -66,7 +66,7 @@ public sealed class LocalizedText
         ["Overlay.Listening"] = ("倾听中…", "Listening…"),
         ["Overlay.Transcribing"] = ("转化中…", "Transcribing…"),
         ["Overlay.WarmingUp"] = ("模型预热中…", "Warming up model…"),
-        ["Overlay.Done"] = ("已输入", "Done"),
+        ["Overlay.Done"] = ("已输入 / 已复制", "Input / Copied"),
         ["Overlay.Copied"] = ("已复制到剪贴板", "Copied to clipboard"),
         ["Overlay.CopyFailed"] = ("复制失败（剪贴板被占用）", "Copy failed (clipboard busy)"),
         ["Overlay.NoSpeech"] = ("未检测到语音", "No speech detected"),

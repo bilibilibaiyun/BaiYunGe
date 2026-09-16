@@ -37,10 +37,20 @@ public sealed class TextOutputService
         var foreground = User32.GetForegroundWindow();
         var targetStillFocused = targetWindow != IntPtr.Zero && foreground == targetWindow;
         var focusWindow = User32.GetFocusedWindow(foreground);
-        // 黑名单策略：焦点控件或顶层窗口命中黑名单（桌面/资源管理器外壳）→ 不可编辑复制；
-        // 其余（含 focusWindow 获取失败但 foreground 是正常应用）→ 默认键入。
-        var editable = !InputFieldDetector.IsKnownNonEditable(focusWindow) &&
-                       !InputFieldDetector.IsKnownNonEditable(foreground);
+
+        // 混合策略：
+        // 1) 黑名单（桌面/资源管理器外壳）→ 明确不可编辑，走复制；
+        // 2) 否则用 UIA 判断：明确只读控件（List/Text/Pane 等空白处）→ 复制；
+        //    可编辑（Edit/Document）或未知（UIA 失败）→ 键入（未知兜底键入，避免「无法键入」）。
+        bool editable;
+        if (InputFieldDetector.IsKnownNonEditable(focusWindow) || InputFieldDetector.IsKnownNonEditable(foreground))
+        {
+            editable = false;
+        }
+        else
+        {
+            editable = InputFieldDetector.DetectEditable(focusWindow) != InputFieldDetector.EditableState.NonEditable;
+        }
 
         // SendInput 是全局键盘注入：只要焦点仍在原窗口且焦点控件可编辑，
         // 就直接把 Unicode 文本敲进去（对浏览器/聊天框/编辑器/终端均有效），

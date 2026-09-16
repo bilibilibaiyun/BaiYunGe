@@ -471,12 +471,10 @@ public partial class App : Application
             {
                 _overlay.ShowMessage(_text!.Get("Overlay.CopyFailed"));
             }
-            else if (result.Output == OutputResult.CopiedToClipboard)
-            {
-                _overlay.ShowMessage(_text!.Get("Overlay.Copied"));
-            }
             else
             {
+                // 键入成功或复制成功统一提示「已输入 / 已复制」：SendInput 是否真正落到目标
+                // 无法精确验证（空白处可能未键入），统一模糊提示更诚实、不误导。
                 _overlay.ShowMessage(_text!.Get("Overlay.Done"));
             }
 

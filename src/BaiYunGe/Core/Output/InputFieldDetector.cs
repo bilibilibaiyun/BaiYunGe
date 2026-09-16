@@ -98,6 +98,84 @@ public static class InputFieldDetector
         return false;
     }
 
+    /// <summary>可编辑性判定三态：可编辑 / 明确不可编辑 / 未知（UIA 失败或无法判断）。</summary>
+    public enum EditableState
+    {
+        Editable,
+        NonEditable,
+        Unknown
+    }
+
+    /// <summary>
+    /// 用 UIA 判断控件是否可编辑。返回三态：
+    /// - Editable：Edit/Document 或 ValuePattern 非只读（输入框/可写控件）；
+    /// - NonEditable：明确只读的控件类型（List/Text/Tree/Image/Pane/Window 等，即空白处/静态内容）；
+    /// - Unknown：UIA 失败或控件类型不明确，由调用方兜底（默认视为可键入，避免「无法键入」）。
+    /// </summary>
+    public static EditableState DetectEditable(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return EditableState.Unknown;
+        }
+
+        try
+        {
+            var element = AutomationElement.FromHandle(hwnd);
+            if (element is null)
+            {
+                return EditableState.Unknown;
+            }
+
+            var controlType = element.Current.ControlType;
+            if (controlType == ControlType.Edit || controlType == ControlType.Document)
+            {
+                return EditableState.Editable;
+            }
+
+            if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var valuePattern))
+            {
+                return ((ValuePattern)valuePattern).Current.IsReadOnly
+                    ? EditableState.NonEditable
+                    : EditableState.Editable;
+            }
+
+            if (IsReadOnlyControlType(controlType))
+            {
+                return EditableState.NonEditable;
+            }
+
+            return EditableState.Unknown;
+        }
+        catch
+        {
+            return EditableState.Unknown;
+        }
+    }
+
+    /// <summary>明确只读、不接收文本输入的 UIA 控件类型（空白处/静态内容/容器）。</summary>
+    private static bool IsReadOnlyControlType(ControlType controlType)
+    {
+        return controlType == ControlType.List ||
+               controlType == ControlType.ListItem ||
+               controlType == ControlType.Text ||
+               controlType == ControlType.Tree ||
+               controlType == ControlType.TreeItem ||
+               controlType == ControlType.Image ||
+               controlType == ControlType.Pane ||
+               controlType == ControlType.Window ||
+               controlType == ControlType.Button ||
+               controlType == ControlType.TabItem ||
+               controlType == ControlType.Menu ||
+               controlType == ControlType.MenuItem ||
+               controlType == ControlType.ScrollBar ||
+               controlType == ControlType.Separator ||
+               controlType == ControlType.StatusBar ||
+               controlType == ControlType.TitleBar ||
+               controlType == ControlType.ToolBar ||
+               controlType == ControlType.ProgressBar;
+    }
+
     private static string GetClassName(IntPtr hwnd)
     {
         var builder = new StringBuilder(256);
