@@ -33,7 +33,7 @@ PrivilegesRequiredOverridesAllowed=dialog commandline
 CloseApplications=yes
 RestartApplications=no
 OutputDir=..\artifacts
-OutputBaseFilename=白云歌_BaiYunGe_3.0.8_arm64_Setup
+OutputBaseFilename=2-白云歌_BaiYunGe_3.0.8_arm64_Setup
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
