@@ -19,7 +19,7 @@ public sealed class LocalizedText
         ["Tray.ResumeInput"] = ("恢复输入", "Resume Input"),
         ["Tray.Exit"] = ("退出", "Exit"),
         ["Tray.StartupTipTitle"] = ("白云歌已启动", "BaiYunGe started"),
-        ["Tray.StartupTipText"] = ("已最小化到托盘，按住快捷键说话即可语音输入", "Minimized to tray. Hold the hotkey and speak to type."),
+        ["Tray.StartupTipText"] = ("白云歌已最小化启动", "BaiYunGe is minimized"),
 
         ["Settings.Title"] = ("白云歌 设置", "BaiYunGe Settings"),
         ["Page.General"] = ("通用", "General"),
