@@ -32,11 +32,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 内置 llama.cpp 引擎运行时，随输出/发布复制 -->
+    <!-- 内置 llama.cpp 引擎运行时，随输出/发布复制。
+         用 Always 而非 PreserveNewest：引擎 DLL 的修改时间是下载/构建时间（可能早于
+         目标目录里的旧文件），PreserveNewest 会误判旧文件「更新」而不复制，导致
+         发布/安装包里残留旧引擎（报 0xC0000135 DLL 缺失）。 -->
     <None Include="..\..\engine\llama-server\**\*"
           Link="engine\llama-server\%(RecursiveDir)%(Filename)%(Extension)"
-          CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest" />
+          CopyToOutputDirectory="Always"
+          CopyToPublishDirectory="Always" />
     <!-- 内置测试音频（test-pipeline 调试用） -->
     <Content Include="Assets\test-audio.wav"
              CopyToOutputDirectory="PreserveNewest"
