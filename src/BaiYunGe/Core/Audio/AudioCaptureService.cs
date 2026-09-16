@@ -114,7 +114,19 @@ public sealed class AudioCaptureService : IDisposable
     {
         try
         {
-            session.Start();
+            // WASAPI StartRecording 在设备异常（睡眠唤醒、屏幕共享改变音频路由等）时可能阻塞。
+            // 放到后台线程并加超时，避免阻塞 UI 线程导致整个软件卡死。
+            try
+            {
+                await Task.Run(session.Start, cancellationToken)
+                    .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                session.Dispose();
+                throw new InvalidOperationException("音频设备启动超时，请重新插拔麦克风后重试。");
+            }
 
             DeviceChanged?.Invoke(this, session.DeviceInfo);
 
