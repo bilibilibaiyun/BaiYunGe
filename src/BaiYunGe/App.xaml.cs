@@ -467,6 +467,10 @@ public partial class App : Application
             {
                 _overlay.ShowMessage(_text!.Get("Overlay.NoSpeech"));
             }
+            else if (result.Output == OutputResult.Failed)
+            {
+                _overlay.ShowMessage(_text!.Get("Overlay.CopyFailed"));
+            }
             else if (result.Output == OutputResult.CopiedToClipboard)
             {
                 _overlay.ShowMessage(_text!.Get("Overlay.Copied"));

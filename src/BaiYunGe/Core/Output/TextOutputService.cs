@@ -89,7 +89,9 @@ public sealed class TextOutputService
 
     private async Task<OutputResult> CopyToClipboardAsync(string text, CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < 15; attempt++)
+        // 只重试 3 次：剪贴板被外部进程（远程桌面/剪贴板工具）持续占用时，每次 OpenClipboard
+        // 会阻塞约 1 秒，重试 15 次会让浮窗卡在「识别中」十几秒。快速失败并明确提示更友好。
+        for (var attempt = 0; attempt < 3; attempt++)
         {
             try
             {

@@ -1,18 +1,22 @@
 namespace BaiYunGe.Core.Audio;
 
 /// <summary>
-/// 能量 VAD，参考旧版健壮实现，并针对降噪麦克风调优：
-/// 1) 前 250ms 用「低分位（25%）」校准噪声地板，并排除明显语音帧（> -40dB），
+/// 能量 VAD，针对降噪麦克风调优：
+/// 1) 前 250ms 用「中位数」校准噪声地板，并排除明显语音帧（> -40dB），
 ///    避免「按住立即说话」时校准被语音污染、噪声地板被抬高；
-///    语音阈值 = max(语音下限, min(-36, 噪声地板+8))，动态自适应；
-/// 2) 语音判定下限大幅放宽（-54dB），适配降噪麦克风整体电平偏低（实测 -50~-60dB）的场景；
-/// 3) 只有「检测到语音之后」才开始累计静音时长（避免按住键未开口被提前停止）；
-/// 4) 提交前的有效语音判定用宽松下限 -68dB。
+///    语音阈值 = max(语音下限, min(-36, 噪声地板+12))，动态自适应；
+/// 2) 需连续 3 帧超过阈值才判语音，过滤瞬时环境杂音尖峰（键盘声、物体碰撞等）；
+/// 3) 语音判定下限放宽（-54dB），适配降噪麦克风整体电平偏低（实测 -50~-60dB）的场景；
+/// 4) 只有「检测到语音之后」才开始累计静音时长（避免按住键未开口被提前停止）；
+/// 5) 提交前的有效语音判定用宽松下限 -68dB。
 /// </summary>
 public sealed class VoiceActivityDetector
 {
     private const double CalibrationDurationMs = 250;
     private const double MinimumSpeechDb = -68;
+
+    /// <summary>连续超过阈值的帧数达到该值才判为语音，过滤瞬时环境杂音尖峰（键盘声、物体碰撞等）。</summary>
+    private const int ConsecutiveSpeechFramesRequired = 3;
 
     private readonly double _silenceStopMs;
     private readonly double _speechFloorDb;
@@ -25,6 +29,7 @@ public sealed class VoiceActivityDetector
     private bool _hasSpeech;
     private bool _speechReported;
     private bool _silenceTimeoutReported;
+    private int _consecutiveSpeechFrames;
 
     public VoiceActivityDetector(int sensitivity, int silenceStopMs)
     {
@@ -78,17 +83,24 @@ public sealed class VoiceActivityDetector
         var threshold = ComputeThreshold();
         if (rmsDb >= threshold)
         {
-            _hasSpeech = true;
-            _silenceAccumulatedMs = 0;
-            _silenceTimeoutReported = false;
-            if (!_speechReported)
+            // 需要连续多帧超过阈值才判语音：瞬时杂音尖峰（单帧）不触发，持续的人声才会。
+            _consecutiveSpeechFrames++;
+            if (_consecutiveSpeechFrames >= ConsecutiveSpeechFramesRequired)
             {
-                _speechReported = true;
-                SpeechDetected?.Invoke(this, EventArgs.Empty);
+                _hasSpeech = true;
+                _silenceAccumulatedMs = 0;
+                _silenceTimeoutReported = false;
+                if (!_speechReported)
+                {
+                    _speechReported = true;
+                    SpeechDetected?.Invoke(this, EventArgs.Empty);
+                }
             }
 
             return;
         }
+
+        _consecutiveSpeechFrames = 0;
 
         // 关键：只有检测到语音之后才累计静音，避免按住键未开口就被静音超时停止。
         if (_hasSpeech)
