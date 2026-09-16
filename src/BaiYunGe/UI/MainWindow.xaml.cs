@@ -430,7 +430,15 @@ public partial class MainWindow : Window
                 if (p.TotalBytes > 0)
                 {
                     _modelProgress.Value = (double)p.ReceivedBytes / p.TotalBytes * 100;
-                    _modelStatus.Text = _text.Format("Model.Progress", p.FileName, BytesToText(p.ReceivedBytes), BytesToText(p.TotalBytes));
+                    // 校验阶段（下载完成后 SHA256 完整性校验）单独提示，避免进度条停在 100% 看似卡住。
+                    if (string.Equals(p.Source, "verifying", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _modelStatus.Text = _text.Format("Model.Verifying", p.FileName, BytesToText(p.ReceivedBytes), BytesToText(p.TotalBytes));
+                    }
+                    else
+                    {
+                        _modelStatus.Text = _text.Format("Model.Progress", p.FileName, BytesToText(p.ReceivedBytes), BytesToText(p.TotalBytes));
+                    }
                 }
             });
 

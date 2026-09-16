@@ -74,7 +74,7 @@ public sealed class ModelDownloader : IDisposable
                 .ConfigureAwait(false);
         }
 
-        return await VerifyAsync(destinationDirectory, cancellationToken).ConfigureAwait(false);
+        return await VerifyAsync(destinationDirectory, progress, cancellationToken).ConfigureAwait(false);
     }
 
     public Task<ModelDownloadSummary> QuickVerifyAsync(string directory, CancellationToken cancellationToken = default)
@@ -90,7 +90,10 @@ public sealed class ModelDownloader : IDisposable
         return Task.FromResult(new ModelDownloadSummary(checks.All(c => c.IsValid), checks));
     }
 
-    public async Task<ModelDownloadSummary> VerifyAsync(string directory, CancellationToken cancellationToken = default)
+    public async Task<ModelDownloadSummary> VerifyAsync(
+        string directory,
+        IProgress<ModelDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         var checks = new List<ModelFileCheck>();
         foreach (var file in Manifest)
@@ -100,7 +103,7 @@ public sealed class ModelDownloader : IDisposable
             var size = File.Exists(path) ? new FileInfo(path).Length : 0;
             var valid = File.Exists(path) &&
                         size == file.ExpectedSize &&
-                        await HashMatchesAsync(path, file.ExpectedSha256, cancellationToken).ConfigureAwait(false);
+                        await HashMatchesAsync(path, file.ExpectedSha256, file.Name, progress, cancellationToken).ConfigureAwait(false);
             checks.Add(new ModelFileCheck(file.Name, valid, size));
         }
 
@@ -120,7 +123,7 @@ public sealed class ModelDownloader : IDisposable
         // 已完整安装：跳过。
         if (File.Exists(finalPath) &&
             new FileInfo(finalPath).Length == file.ExpectedSize &&
-            await HashMatchesAsync(finalPath, file.ExpectedSha256, cancellationToken).ConfigureAwait(false))
+            await HashMatchesAsync(finalPath, file.ExpectedSha256, file.Name, progress, cancellationToken).ConfigureAwait(false))
         {
             Report(file.Name, file.ExpectedSize, file.ExpectedSize, "installed", progress);
             return;
@@ -130,7 +133,7 @@ public sealed class ModelDownloader : IDisposable
         if (!File.Exists(finalPath) &&
             File.Exists(partialPath) &&
             new FileInfo(partialPath).Length == file.ExpectedSize &&
-            await HashMatchesAsync(partialPath, file.ExpectedSha256, cancellationToken).ConfigureAwait(false))
+            await HashMatchesAsync(partialPath, file.ExpectedSha256, file.Name, progress, cancellationToken).ConfigureAwait(false))
         {
             await ReplaceReadyFileAsync(partialPath, finalPath, file, beforeFileReplaceAsync, progress, cancellationToken)
                 .ConfigureAwait(false);
@@ -272,7 +275,7 @@ public sealed class ModelDownloader : IDisposable
             throw new InvalidDataException($"Downloaded size mismatch for {file.Name}.");
         }
 
-        if (!await HashMatchesAsync(partialPath, file.ExpectedSha256, cancellationToken).ConfigureAwait(false))
+        if (!await HashMatchesAsync(partialPath, file.ExpectedSha256, file.Name, progress, cancellationToken).ConfigureAwait(false))
         {
             File.Delete(partialPath);
             throw new InvalidDataException($"SHA-256 mismatch for {file.Name}.");
@@ -318,11 +321,31 @@ public sealed class ModelDownloader : IDisposable
         progress?.Report(new ModelDownloadProgress(file.Name, file.ExpectedSize, file.ExpectedSize, "completed", null));
     }
 
-    private static async Task<bool> HashMatchesAsync(string path, string expectedSha256, CancellationToken cancellationToken)
+    private static async Task<bool> HashMatchesAsync(
+        string path,
+        string expectedSha256,
+        string fileName,
+        IProgress<ModelDownloadProgress>? progress,
+        CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, useAsync: true);
-        var hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
-        return string.Equals(Convert.ToHexString(hash), expectedSha256, StringComparison.OrdinalIgnoreCase);
+        var fileSize = stream.Length;
+
+        // 手动分块哈希 + 进度报告：大文件（2GB+）SHA256 校验需数秒到数十秒，
+        // 若一次性 HashDataAsync 无进度，进度条会停在 100% 看起来卡住。
+        using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = new byte[1024 * 1024];
+        long hashed = 0;
+        int read;
+        while ((read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            sha.AppendData(buffer, 0, read);
+            hashed += read;
+            progress?.Report(new ModelDownloadProgress(fileName, hashed, fileSize, "verifying", null));
+        }
+
+        var hash = Convert.ToHexString(sha.GetHashAndReset());
+        return string.Equals(hash, expectedSha256, StringComparison.OrdinalIgnoreCase);
     }
 
     private void Report(string fileName, long received, long total, string source, IProgress<ModelDownloadProgress>? progress)

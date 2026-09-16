@@ -55,6 +55,7 @@ public sealed class LocalizedText
         ["Model.Installed"] = ("模型已就绪", "Model is ready"),
         ["Model.NotInstalled"] = ("模型未安装", "Model not installed"),
         ["Model.Progress"] = ("下载 {0}：{1} / {2}", "Downloading {0}: {1} / {2}"),
+        ["Model.Verifying"] = ("校验 {0}：{1} / {2}", "Verifying {0}: {1} / {2}"),
         ["Model.Downloading"] = ("下载中…", "Downloading…"),
 
         ["Dict.Enabled"] = ("启用词典", "Enable dictionary"),
