@@ -555,12 +555,17 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _logger?.Info("BaiYunGe exiting.");
+
+        // 托盘图标清理放最前：NotifyIcon 的 NIM_DELETE 需尽早执行，避免被后续
+        // 可能阻塞的 Dispose（如等待 llama-server 子进程退出）延迟或跳过，
+        // 否则进程退出后托盘图标残留（鼠标移上才消失）。
+        _tray?.Dispose();
+
         _keepAliveTimer?.Dispose();
         _pipeline?.Dispose();
         _hotkeyService?.Dispose();
         _server?.Dispose();
         _audioCapture?.Dispose();
-        _tray?.Dispose();
         _overlay?.Close();
         _logger?.Dispose();
         try
