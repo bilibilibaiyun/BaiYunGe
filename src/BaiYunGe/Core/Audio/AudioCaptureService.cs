@@ -201,7 +201,13 @@ public sealed class AudioCaptureService : IDisposable
             int maxRecordSeconds,
             Func<CaptureSession, AudioCaptureStopReason, Task<AudioCaptureResult>> stopCallback)
         {
-            _capture = new WasapiCapture(device);
+            // 显式指定 16kHz/16 位/mono：NAudio 的 WasapiCapture 带 AutoConvertPcm 标志，
+            // WASAPI 会把设备原生格式（含专业声卡如 Focusrite 的 8 位/24 位 MixFormat）
+            // 自动转换为目标格式，避免用 MixFormat 录音导致 8 位低质量、识别失败。
+            _capture = new WasapiCapture(device)
+            {
+                WaveFormat = new WaveFormat(PcmAudioConverter.TargetSampleRate, 16, 1)
+            };
             _vad = vad;
             _converter = converter;
             _levelCallback = levelCallback;
