@@ -2,7 +2,7 @@
 ; 由 007 生成 — 白云歌 v2.0.3
 
 #define MyAppName "白云歌 BaiYunGe"
-#define MyAppVersion "3.0.9"
+#define MyAppVersion "3.1.0"
 #define MyAppExeName "BaiYunGe.exe"
 #define MyAppPublisher "BaiYun"
 #define MyAppURL "https://github.com/bilibilibaiyun"
@@ -33,7 +33,7 @@ PrivilegesRequiredOverridesAllowed=dialog commandline
 CloseApplications=yes
 RestartApplications=no
 OutputDir=..\artifacts
-OutputBaseFilename=1-白云歌_BaiYunGe_3.0.9_Setup
+OutputBaseFilename=1-白云歌_BaiYunGe_3.1.0_Setup
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"

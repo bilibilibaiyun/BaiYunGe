@@ -219,10 +219,9 @@ public partial class App : Application
         {
             try
             {
-                // 延迟预热：等软件启动稳定（托盘就绪、UI 响应）后再加载模型，
-                // 避免启动早期（尤其更新覆盖安装后）模型大文件磁盘 I/O 与 GPU 探测
-                // 抢占资源，导致自启动缓慢、界面卡顿。首次识别若早于此时仍会走懒启动。
-                await Task.Delay(TimeSpan.FromSeconds(5));
+                // 延迟预热：仅给 1 秒让软件启动稳定（托盘就绪、UI 响应），随后立即后台加载模型。
+                // 之前 5 秒太长，用户在启动后 5 秒内识别会走冷启动（首次识别慢 5 秒+）。
+                await Task.Delay(TimeSpan.FromSeconds(1));
 
                 // 显示预热提示（不抢焦点浮窗，纯文字无电平条）。
                 await Dispatcher.InvokeAsync(() =>
@@ -233,6 +232,9 @@ public partial class App : Application
 
                 await _server!.EnsureStartedAsync(modelDir, _settings.InferenceDevice, CancellationToken.None);
                 _logger!.Info("llama-server warmed up.");
+
+                // 预热推理：触发第一次推理（GPU 管线编译、权重加载到显存），消除首次识别的额外延迟。
+                await _server!.WarmupInferenceAsync(CancellationToken.None);
             }
             catch (Exception exception)
             {

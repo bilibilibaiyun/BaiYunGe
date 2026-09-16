@@ -194,6 +194,72 @@ public sealed class LlamaServerManager : IDisposable
         return responseText;
     }
 
+    /// <summary>
+    /// 预热推理：发送一次静音转写，触发第一次推理（GPU 管线编译、权重加载到显存等），
+    /// 消除首次识别的额外延迟（实测首次 prompt eval 约 5 秒）。失败静默忽略，不影响正常识别。
+    /// </summary>
+    public async Task WarmupInferenceAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var silenceWav = CreateSilenceWav(TimeSpan.FromMilliseconds(500));
+            using var content = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(silenceWav);
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+            content.Add(fileContent, "file", "warmup.wav");
+            content.Add(new StringContent("json"), "response_format");
+            content.Add(new StringContent("zh"), "language");
+
+            var client = GetHttpClient();
+            var baseUri = _baseUri ?? throw new InvalidOperationException("llama-server is not initialized.");
+            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "/v1/audio/transcriptions"))
+            {
+                Content = content
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            using var response = await client
+                .SendAsync(request, HttpCompletionOption.ResponseContentRead, timeout.Token)
+                .ConfigureAwait(false);
+            _ = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+            _logger.Info("llama-server warmup inference done.");
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn($"Warmup inference skipped: {exception.Message}");
+        }
+    }
+
+    /// <summary>生成静音 WAV（16kHz/16bit/mono）字节数组，用于预热推理。</summary>
+    private static byte[] CreateSilenceWav(TimeSpan duration)
+    {
+        const int sampleRate = 16000;
+        const int channels = 1;
+        const int bitsPerSample = 16;
+        var bytesPerSample = bitsPerSample / 8;
+        var sampleCount = (int)(sampleRate * duration.TotalSeconds);
+        var dataSize = sampleCount * channels * bytesPerSample;
+        var wav = new byte[44 + dataSize];
+
+        wav[0] = (byte)'R'; wav[1] = (byte)'I'; wav[2] = (byte)'F'; wav[3] = (byte)'F';
+        BitConverter.GetBytes(36 + dataSize).CopyTo(wav, 4);
+        wav[8] = (byte)'W'; wav[9] = (byte)'A'; wav[10] = (byte)'V'; wav[11] = (byte)'E';
+        wav[12] = (byte)'f'; wav[13] = (byte)'m'; wav[14] = (byte)'t'; wav[15] = (byte)' ';
+        BitConverter.GetBytes(16).CopyTo(wav, 16);
+        BitConverter.GetBytes((short)1).CopyTo(wav, 20);
+        BitConverter.GetBytes((short)channels).CopyTo(wav, 22);
+        BitConverter.GetBytes(sampleRate).CopyTo(wav, 24);
+        BitConverter.GetBytes(sampleRate * channels * bytesPerSample).CopyTo(wav, 28);
+        BitConverter.GetBytes((short)(channels * bytesPerSample)).CopyTo(wav, 32);
+        BitConverter.GetBytes((short)bitsPerSample).CopyTo(wav, 34);
+        wav[36] = (byte)'d'; wav[37] = (byte)'a'; wav[38] = (byte)'t'; wav[39] = (byte)'a';
+        BitConverter.GetBytes(dataSize).CopyTo(wav, 40);
+
+        return wav;
+    }
+
     public async Task StopAsync()
     {
         await _startupLock.WaitAsync().ConfigureAwait(false);
