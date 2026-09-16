@@ -287,6 +287,22 @@ public sealed class KeyboardHotkeyService : IDisposable
         }
     }
 
+    /// <summary>
+    /// 查询当前快捷键组合是否仍处于按下状态（用 GetAsyncKeyState 查硬件实时状态）。
+    /// 供按住模式录音期间的轮询兜底使用：Win 等特殊键的 keyup 可能被系统或其他
+    /// 软件的键盘钩子吞掉，导致 WakeReleased 不触发、松键后仍一直录音。
+    /// </summary>
+    public bool IsHotkeyDown()
+    {
+        HotkeyDefinition hotkey;
+        lock (_sync)
+        {
+            hotkey = _hotkey;
+        }
+
+        return !hotkey.IsEmpty && IsComboDown(hotkey, hotkey.Key);
+    }
+
     private bool CancelRecordingIfAny()
     {
         lock (_sync)

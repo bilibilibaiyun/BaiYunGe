@@ -96,6 +96,9 @@ public sealed class LocalizedText
         ["Update.RollbackAction"] = ("回退到此版本", "Roll back to this version"),
         ["Update.Cancel"] = ("取消", "Cancel"),
         ["Update.Current"] = ("当前", "current"),
+        ["Update.Stable"] = ("稳定版", "Stable"),
+        ["Update.Test"] = ("测试版", "Testing"),
+        ["Update.TestWarning"] = ("建议选择稳定版本，测试版本可能有缺陷", "Stable versions are recommended; testing versions may have defects."),
 
         ["Common.OK"] = ("确定", "OK"),
         ["Common.Cancel"] = ("取消", "Cancel"),

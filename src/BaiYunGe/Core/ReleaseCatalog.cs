@@ -17,11 +17,23 @@ public sealed class ReleaseCatalog
 
     private readonly HttpClient _httpClient;
 
+    /// <summary>
+    /// 稳定版列表（其余版本视为测试版）。后续新版本默认归为测试版，只有白云先生明确
+    /// 指示「某版本标记为稳定版」时才加入此列表。
+    /// </summary>
+    private static readonly HashSet<string> StableVersions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "3.0.5", "3.1.0", "3.2.0"
+    };
+
     public ReleaseCatalog()
     {
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("BaiYunGe-Updater");
     }
+
+    /// <summary>判断某版本是否为稳定版。</summary>
+    public static bool IsStable(string version) => StableVersions.Contains(version);
 
     /// <summary>拉取历史 release 列表（最多 30 个，按发布时间倒序）。</summary>
     public async Task<List<ReleaseEntry>?> GetReleasesAsync(CancellationToken ct = default)

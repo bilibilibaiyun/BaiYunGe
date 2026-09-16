@@ -789,8 +789,8 @@ public partial class MainWindow : Window
         var window = new Window
         {
             Title = _text.Get("Update.Rollback"),
-            Width = 400,
-            Height = 440,
+            Width = 420,
+            Height = 560,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Owner = this,
             ResizeMode = ResizeMode.NoResize
@@ -798,6 +798,7 @@ public partial class MainWindow : Window
 
         var grid = new Grid { Margin = new Thickness(16) };
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
@@ -810,21 +811,60 @@ public partial class MainWindow : Window
         grid.Children.Add(hint);
         Grid.SetRow(hint, 0);
 
-        var listBox = new ListBox { Margin = new Thickness(0, 0, 0, 12) };
+        // 稳定版栏目
+        var stablePanel = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
+        stablePanel.Children.Add(new TextBlock
+        {
+            Text = _text.Get("Update.Stable"),
+            FontWeight = FontWeights.Bold,
+            Margin = new Thickness(0, 0, 0, 4)
+        });
+        var stableListBox = new ListBox { MaxHeight = 150 };
+        stablePanel.Children.Add(stableListBox);
+        grid.Children.Add(stablePanel);
+        Grid.SetRow(stablePanel, 1);
+
+        // 测试版栏目
+        var testPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
+        testPanel.Children.Add(new TextBlock
+        {
+            Text = _text.Get("Update.Test"),
+            FontWeight = FontWeights.Bold,
+            Margin = new Thickness(0, 0, 0, 4)
+        });
+        testPanel.Children.Add(new TextBlock
+        {
+            Text = _text.Get("Update.TestWarning"),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 4),
+            Foreground = (System.Windows.Media.Brush)Application.Current.Resources["Theme.TextSecondary"]
+        });
+        var testListBox = new ListBox { MaxHeight = 120 };
+        testPanel.Children.Add(testListBox);
+        grid.Children.Add(testPanel);
+        Grid.SetRow(testPanel, 2);
+
         foreach (var release in releases)
         {
-            var isCurrent = string.Equals(release.Version, currentVersion, StringComparison.OrdinalIgnoreCase);
-            var date = release.PublishedAt == DateTime.MinValue ? string.Empty : $"  ({release.PublishedAt:yyyy-MM-dd})";
-            var mark = isCurrent ? $"  ← {_text.Get("Update.Current")}" : string.Empty;
-            listBox.Items.Add(new ListBoxItem
-            {
-                Content = $"v{release.Version}{date}{mark}",
-                Tag = release,
-                IsEnabled = !isCurrent
-            });
+            var target = ReleaseCatalog.IsStable(release.Version) ? stableListBox : testListBox;
+            target.Items.Add(MakeReleaseItem(release, currentVersion));
         }
-        grid.Children.Add(listBox);
-        Grid.SetRow(listBox, 1);
+
+        // 两个列表选中联动：选其一则取消另一个。
+        stableListBox.SelectionChanged += (_, _) =>
+        {
+            if (stableListBox.SelectedItem is not null)
+            {
+                testListBox.SelectedItem = null;
+            }
+        };
+        testListBox.SelectionChanged += (_, _) =>
+        {
+            if (testListBox.SelectedItem is not null)
+            {
+                stableListBox.SelectedItem = null;
+            }
+        };
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         var cancelButton = new Button { Content = _text.Get("Update.Cancel"), Width = 90, Margin = new Thickness(0, 0, 8, 0) };
@@ -832,20 +872,34 @@ public partial class MainWindow : Window
         cancelButton.Click += (_, _) => { tcs.TrySetResult(null); window.Close(); };
         rollbackButton.Click += (_, _) =>
         {
-            var selected = (listBox.SelectedItem as ListBoxItem)?.Tag as ReleaseEntry;
+            var selected = (stableListBox.SelectedItem as ListBoxItem)?.Tag as ReleaseEntry
+                           ?? (testListBox.SelectedItem as ListBoxItem)?.Tag as ReleaseEntry;
             tcs.TrySetResult(selected);
             window.Close();
         };
         buttons.Children.Add(cancelButton);
         buttons.Children.Add(rollbackButton);
         grid.Children.Add(buttons);
-        Grid.SetRow(buttons, 2);
+        Grid.SetRow(buttons, 3);
 
         window.Content = grid;
         window.Closed += (_, _) => tcs.TrySetResult(null);
         window.ShowDialog();
 
         return tcs.Task;
+    }
+
+    private ListBoxItem MakeReleaseItem(ReleaseEntry release, string currentVersion)
+    {
+        var isCurrent = string.Equals(release.Version, currentVersion, StringComparison.OrdinalIgnoreCase);
+        var date = release.PublishedAt == DateTime.MinValue ? string.Empty : $"  ({release.PublishedAt:yyyy-MM-dd})";
+        var mark = isCurrent ? $"  ← {_text.Get("Update.Current")}" : string.Empty;
+        return new ListBoxItem
+        {
+            Content = $"v{release.Version}{date}{mark}",
+            Tag = release,
+            IsEnabled = !isCurrent
+        };
     }
 
     /// <summary>下载安装包 → 退出软件并静默覆盖安装（保留配置，不删数据目录）。</summary>
