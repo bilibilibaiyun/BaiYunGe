@@ -59,6 +59,23 @@ public sealed class AudioCaptureService : IDisposable
     {
         ThrowIfDisposed();
 
+        // 整个启动流程（设备解析 + WasapiCapture 初始化 + StartRecording）在设备异常
+        // （睡眠唤醒、屏幕共享改变音频路由）时都可能阻塞。全部放到后台线程，
+        // 避免阻塞 UI 线程导致整个软件卡死（此前只把 StartRecording 移到了后台，
+        // 但 Resolve 与 CaptureSession 构造仍在 UI 线程，仍会卡死）。
+        return Task.Run(
+            () => StartCoreAsync(deviceId, outputPath, maxRecordSeconds, silenceStopMs, vadSensitivity, cancellationToken),
+            cancellationToken);
+    }
+
+    private async Task<AudioCaptureResult> StartCoreAsync(
+        string? deviceId,
+        string outputPath,
+        int maxRecordSeconds,
+        int silenceStopMs,
+        int vadSensitivity,
+        CancellationToken cancellationToken)
+    {
         CaptureSession session;
         lock (_sync)
         {
@@ -80,7 +97,7 @@ public sealed class AudioCaptureService : IDisposable
             _session = session;
         }
 
-        return RunSessionAsync(session, cancellationToken);
+        return await RunSessionAsync(session, cancellationToken).ConfigureAwait(false);
     }
 
     public Task<AudioCaptureResult> StopAsync()
@@ -151,9 +168,9 @@ public sealed class AudioCaptureService : IDisposable
 
     private async Task<AudioCaptureResult> StopSessionAsync(CaptureSession session, AudioCaptureStopReason reason)
     {
-        // 让出当前线程，避免在 WASAPI 回调线程里做重活。
-        await Task.Yield();
-        var result = session.Stop(reason);
+        // StopRecording 在设备异常时也可能阻塞。用 Task.Run 确保它在后台线程池执行
+        // （Task.Yield 在 UI 线程调用时仍会回到 UI 线程，无法避免卡 UI）。
+        var result = await Task.Run(() => session.Stop(reason)).ConfigureAwait(false);
 
         lock (_sync)
         {

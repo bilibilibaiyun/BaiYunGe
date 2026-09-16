@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly ModelDownloader _downloader;
     private readonly AppLogger _logger;
     private readonly UpdateChecker _updateChecker = new();
+    private readonly ReleaseCatalog _releaseCatalog = new();
 
     private string _currentPage = "general";
 
@@ -215,6 +216,14 @@ public partial class MainWindow : Window
         var checkButton = new Button { Content = _text.Get("Update.Check") };
         checkButton.Click += async (_, _) => await CheckForUpdateAsync();
         panel.Children.Add(checkButton);
+
+        var rollbackButton = new Button
+        {
+            Content = _text.Get("Update.Rollback"),
+            Margin = new Thickness(0, 6, 0, 0)
+        };
+        rollbackButton.Click += async (_, _) => await RollbackVersionAsync();
+        panel.Children.Add(rollbackButton);
 
         _updateButton = new Button
         {
@@ -722,6 +731,121 @@ public partial class MainWindow : Window
     private void OnUpdateCheckCompleted()
     {
         Dispatcher.Invoke(RefreshUpdateStatus);
+    }
+
+    /// <summary>版本回退：拉取历史版本列表，让用户选择后下载对应版本安装包覆盖安装。</summary>
+    private async Task RollbackVersionAsync()
+    {
+        try
+        {
+            _updateStatus!.Text = _text.Get("Update.Checking");
+            var releases = await _releaseCatalog.GetReleasesAsync();
+            if (releases is null || releases.Count == 0)
+            {
+                _updateStatus.Text = _text.Get("Update.Failed");
+                return;
+            }
+
+            var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? string.Empty;
+
+            var selected = await ShowVersionPickerAsync(releases, current);
+            if (selected is null)
+            {
+                _updateStatus.Text = _text.Get("Update.UpToDate");
+                return;
+            }
+
+            _updateStatus.Text = _text.Get("Update.Checking");
+            var url = await _releaseCatalog.GetDownloadUrlAsync(selected.Version);
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                _updateStatus.Text = _text.Get("Update.Failed");
+                return;
+            }
+
+            var message = _text.Format("Update.RollbackConfirm", selected.Version);
+            var confirm = MessageBox.Show(this, message, _text.Get("Update.Rollback"),
+                MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes)
+            {
+                _updateStatus.Text = _text.Get("Update.UpToDate");
+                return;
+            }
+
+            await DownloadAndInstallUpdateAsync(url, selected.Version);
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Rollback failed.", exception);
+            _updateStatus!.Text = _text.Get("Update.Failed");
+        }
+    }
+
+    /// <summary>弹窗展示历史版本列表，返回用户选择的版本（取消/关闭返回 null）。</summary>
+    private Task<ReleaseEntry?> ShowVersionPickerAsync(List<ReleaseEntry> releases, string currentVersion)
+    {
+        var tcs = new TaskCompletionSource<ReleaseEntry?>();
+
+        var window = new Window
+        {
+            Title = _text.Get("Update.Rollback"),
+            Width = 400,
+            Height = 440,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            ResizeMode = ResizeMode.NoResize
+        };
+
+        var grid = new Grid { Margin = new Thickness(16) };
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var hint = new TextBlock
+        {
+            Text = _text.Get("Update.RollbackHint"),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 10)
+        };
+        grid.Children.Add(hint);
+        Grid.SetRow(hint, 0);
+
+        var listBox = new ListBox { Margin = new Thickness(0, 0, 0, 12) };
+        foreach (var release in releases)
+        {
+            var isCurrent = string.Equals(release.Version, currentVersion, StringComparison.OrdinalIgnoreCase);
+            var date = release.PublishedAt == DateTime.MinValue ? string.Empty : $"  ({release.PublishedAt:yyyy-MM-dd})";
+            var mark = isCurrent ? $"  ← {_text.Get("Update.Current")}" : string.Empty;
+            listBox.Items.Add(new ListBoxItem
+            {
+                Content = $"v{release.Version}{date}{mark}",
+                Tag = release,
+                IsEnabled = !isCurrent
+            });
+        }
+        grid.Children.Add(listBox);
+        Grid.SetRow(listBox, 1);
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var cancelButton = new Button { Content = _text.Get("Update.Cancel"), Width = 90, Margin = new Thickness(0, 0, 8, 0) };
+        var rollbackButton = new Button { Content = _text.Get("Update.RollbackAction"), Width = 120 };
+        cancelButton.Click += (_, _) => { tcs.TrySetResult(null); window.Close(); };
+        rollbackButton.Click += (_, _) =>
+        {
+            var selected = (listBox.SelectedItem as ListBoxItem)?.Tag as ReleaseEntry;
+            tcs.TrySetResult(selected);
+            window.Close();
+        };
+        buttons.Children.Add(cancelButton);
+        buttons.Children.Add(rollbackButton);
+        grid.Children.Add(buttons);
+        Grid.SetRow(buttons, 2);
+
+        window.Content = grid;
+        window.Closed += (_, _) => tcs.TrySetResult(null);
+        window.ShowDialog();
+
+        return tcs.Task;
     }
 
     /// <summary>下载安装包 → 退出软件并静默覆盖安装（保留配置，不删数据目录）。</summary>

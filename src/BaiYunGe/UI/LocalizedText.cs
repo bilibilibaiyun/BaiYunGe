@@ -90,6 +90,12 @@ public sealed class LocalizedText
         ["Update.Downloading"] = ("正在下载更新 {0} / {1}", "Downloading update {0} / {1}"),
         ["Update.Confirm"] = ("是否立即更新？更新会保留你的词典、主题等配置。", "Update now? Your dictionary, theme and other settings will be kept."),
         ["Update.ReadyToInstall"] = ("更新已下载完成。\n\n软件即将退出，随后可能会弹出 Windows 用户账户控制（UAC）窗口，请点击「是」以完成安装。", "Update downloaded.\n\nThe app will now exit. If a Windows User Account Control (UAC) prompt appears, click \"Yes\" to complete the installation."),
+        ["Update.Rollback"] = ("版本回退…", "Rollback version…"),
+        ["Update.RollbackHint"] = ("选择一个要回退到的历史版本：", "Select a previous version to roll back to:"),
+        ["Update.RollbackConfirm"] = ("确定回退到 v{0} 吗？\n\n回退会下载该版本的安装包并覆盖安装，你的词典、主题等配置会保留。", "Roll back to v{0}?\n\nThe installer for this version will be downloaded and installed, keeping your dictionary, theme and other settings."),
+        ["Update.RollbackAction"] = ("回退到此版本", "Roll back to this version"),
+        ["Update.Cancel"] = ("取消", "Cancel"),
+        ["Update.Current"] = ("当前", "current"),
 
         ["Common.OK"] = ("确定", "OK"),
         ["Common.Cancel"] = ("取消", "Cancel"),
