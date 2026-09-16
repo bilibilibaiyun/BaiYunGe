@@ -40,10 +40,6 @@
           Link="engine\llama-server\%(RecursiveDir)%(Filename)%(Extension)"
           CopyToOutputDirectory="Always"
           CopyToPublishDirectory="Always" />
-    <!-- 内置测试音频（test-pipeline 调试用） -->
-    <Content Include="Assets\test-audio.wav"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
     <!-- 应用图标（程序图标/托盘/窗口标题栏） -->
     <Content Include="Assets\app.ico"
              CopyToOutputDirectory="PreserveNewest"
