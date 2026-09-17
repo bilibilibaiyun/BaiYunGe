@@ -6,7 +6,6 @@ using BaiYunGe.Core;
 using BaiYunGe.Core.Audio;
 using BaiYunGe.Core.Inference;
 using BaiYunGe.Core.Keyboard;
-using BaiYunGe.Core.Native;
 
 namespace BaiYunGe.UI;
 
@@ -68,10 +67,6 @@ public partial class MainWindow : Window
         _hotkeyService = hotkeyService;
         _downloader = downloader;
         _logger = logger;
-
-        // 应用 DWM 亚克力/云母背景材质（Windows 11 云母，Windows 10 亚克力）。
-        var isDark = !string.Equals(_settings.Theme, "light", StringComparison.OrdinalIgnoreCase);
-        DwmMaterial.ApplyToWindow(this, isDark);
 
         _hotkeyService.HotkeyRecorded += OnHotkeyRecorded;
         _hotkeyService.RecordCancelled += OnRecordCancelled;
@@ -135,15 +130,17 @@ public partial class MainWindow : Window
 
     private void UpdateNavHighlight(string page)
     {
-        var accent = (System.Windows.Media.Brush)Application.Current.Resources["Theme.Accent"];
-        var white = System.Windows.Media.Brushes.White;
+        var accent = (System.Windows.Media.SolidColorBrush)Application.Current.Resources["Theme.Accent"];
+        var accentSoft = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromArgb(0x2E, accent.Color.R, accent.Color.G, accent.Color.B));
         var textSecondary = (System.Windows.Media.Brush)Application.Current.Resources["Theme.TextSecondary"];
         var transparent = System.Windows.Media.Brushes.Transparent;
 
+        // Fluent 风格选中态：浅色主题色背景 + 主题色文字（比实心主题色更柔和现代）。
         void Apply(Button btn, bool active)
         {
-            btn.Background = active ? accent : transparent;
-            btn.Foreground = active ? white : textSecondary;
+            btn.Background = active ? accentSoft : transparent;
+            btn.Foreground = active ? accent : textSecondary;
         }
 
         Apply(NavGeneral, page == "general");
@@ -373,13 +370,8 @@ public partial class MainWindow : Window
             ResizeMode = ResizeMode.NoResize,
             WindowStyle = WindowStyle.ToolWindow
         };
-        ApplyMaterialToWindow(window);
 
-        var panel = new StackPanel
-        {
-            Margin = new Thickness(20),
-            Background = (System.Windows.Media.Brush)Application.Current.Resources["Theme.CardBg"]
-        };
+        var panel = new StackPanel { Margin = new Thickness(20) };
         panel.Children.Add(Label(_text.Get("Dict.Alias")));
         var aliasBox = new TextBox { Margin = new Thickness(0, 6, 0, 0), FontSize = 16, MinHeight = 34 };
         panel.Children.Add(aliasBox);
@@ -429,13 +421,8 @@ public partial class MainWindow : Window
                 WindowStyle = WindowStyle.ToolWindow,
                 ShowInTaskbar = false
             };
-            ApplyMaterialToWindow(window);
 
-            var panel = new StackPanel
-            {
-                Margin = new Thickness(24),
-                Background = (System.Windows.Media.Brush)Application.Current.Resources["Theme.CardBg"]
-            };
+            var panel = new StackPanel { Margin = new Thickness(24) };
             panel.Children.Add(new TextBlock
             {
                 Text = string.Format(_text.Get("Dict.RecordPrompt"), target),
@@ -517,14 +504,6 @@ public partial class MainWindow : Window
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(key)))[..16].ToLowerInvariant();
         return System.IO.Path.Combine(dir, hash + ".json");
-    }
-
-    /// <summary>为弹窗应用 DWM 材质 + 透明背景（弹窗用 Mica Alt/亚克力）。</summary>
-    private void ApplyMaterialToWindow(Window window)
-    {
-        var isDark = !string.Equals(_settings.Theme, "light", StringComparison.OrdinalIgnoreCase);
-        window.Background = System.Windows.Media.Brushes.Transparent;
-        DwmMaterial.ApplyToWindow(window, isDark, transient: true);
     }
 
     private UIElement BuildCalibrationPage()
