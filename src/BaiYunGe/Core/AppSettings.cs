@@ -13,9 +13,6 @@ public sealed record DictionaryEntry
 
     /// <summary>是否为语音词典词（有录音模板）。</summary>
     public bool IsVoice => !string.IsNullOrWhiteSpace(VoicePath);
-
-    /// <summary>类型显示文本（默认/语音）。</summary>
-    public string TypeText => IsVoice ? "语音" : "默认";
 }
 
 public sealed class AppSettings

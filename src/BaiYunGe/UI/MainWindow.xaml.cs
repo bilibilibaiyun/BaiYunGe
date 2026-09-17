@@ -39,8 +39,6 @@ public partial class MainWindow : Window
     private ComboBox? _modeCombo;
     private CheckBox? _dictEnabled;
     private ListView? _dictList;
-    private TextBox? _aliasBox;
-    private TextBox? _targetBox;
     private TextBox? _modelDirBox;
     private ProgressBar? _modelProgress;
     private TextBlock? _modelStatus;
@@ -297,43 +295,14 @@ public partial class MainWindow : Window
         _dictList = new ListView { Height = 220, Margin = new Thickness(0, 10, 0, 0) };
         var gridView = new GridView();
         gridView.Columns.Add(new GridViewColumn { Header = _text.Get("Dict.Alias"), Width = 150, DisplayMemberBinding = new System.Windows.Data.Binding("Alias") });
-        gridView.Columns.Add(new GridViewColumn { Header = _text.Get("Dict.Target"), Width = 180, DisplayMemberBinding = new System.Windows.Data.Binding("Target") });
-        gridView.Columns.Add(new GridViewColumn { Header = _text.Get("Dict.Type"), Width = 70, DisplayMemberBinding = new System.Windows.Data.Binding("TypeText") });
+        gridView.Columns.Add(new GridViewColumn { Header = _text.Get("Dict.Target"), Width = 220, DisplayMemberBinding = new System.Windows.Data.Binding("Target") });
         _dictList.View = gridView;
         RefreshDictList();
         panel.Children.Add(_dictList);
 
-        var inputGrid = new Grid();
-        inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        _aliasBox = new TextBox { Margin = new Thickness(0, 4, 4, 0) };
-        _targetBox = new TextBox { Margin = new Thickness(4, 4, 4, 0) };
-        Grid.SetColumn(_aliasBox, 0);
-        Grid.SetColumn(_targetBox, 1);
-        inputGrid.Children.Add(_aliasBox);
-        inputGrid.Children.Add(_targetBox);
-
-        var addButton = new Button { Content = _text.Get("Dict.Add"), Margin = new Thickness(4, 4, 0, 0) };
-        addButton.Click += (_, _) =>
-        {
-            var alias = _aliasBox.Text.Trim();
-            var target = _targetBox.Text.Trim();
-            if (string.IsNullOrEmpty(alias) || string.IsNullOrEmpty(target))
-            {
-                return;
-            }
-
-            _settings.Dictionary.Add(new DictionaryEntry { Alias = alias, Target = target });
-            _aliasBox.Text = string.Empty;
-            _targetBox.Text = string.Empty;
-            RefreshDictList();
-            Save();
-        };
-        Grid.SetColumn(addButton, 2);
-        inputGrid.Children.Add(addButton);
-        panel.Children.Add(inputGrid);
+        var recordButton = new Button { Content = _text.Get("Dict.RecordAdd"), Margin = new Thickness(0, 4, 0, 0) };
+        recordButton.Click += async (_, _) => await RecordAndAddWordAsync();
+        panel.Children.Add(recordButton);
 
         var removeButton = new Button { Content = _text.Get("Dict.Remove") };
         removeButton.Click += (_, _) =>
@@ -346,10 +315,6 @@ public partial class MainWindow : Window
             }
         };
         panel.Children.Add(removeButton);
-
-        var recordButton = new Button { Content = _text.Get("Dict.RecordAdd"), Margin = new Thickness(0, 4, 0, 0) };
-        recordButton.Click += async (_, _) => await RecordAndAddWordAsync();
-        panel.Children.Add(recordButton);
 
         return panel;
     }
@@ -396,30 +361,30 @@ public partial class MainWindow : Window
         var window = new Window
         {
             Title = _text.Get("Dict.RecordAdd"),
-            Width = 380,
-            Height = 240,
+            Width = 440,
+            Height = 300,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Owner = this,
             ResizeMode = ResizeMode.NoResize,
             WindowStyle = WindowStyle.ToolWindow
         };
 
-        var panel = new StackPanel { Margin = new Thickness(16) };
+        var panel = new StackPanel { Margin = new Thickness(20) };
         panel.Children.Add(Label(_text.Get("Dict.Alias")));
-        var aliasBox = new TextBox { Margin = new Thickness(0, 4, 0, 0) };
+        var aliasBox = new TextBox { Margin = new Thickness(0, 6, 0, 0), FontSize = 16, MinHeight = 34 };
         panel.Children.Add(aliasBox);
         panel.Children.Add(Label(_text.Get("Dict.Target")));
-        var targetBox = new TextBox { Margin = new Thickness(0, 4, 0, 0) };
+        var targetBox = new TextBox { Margin = new Thickness(0, 6, 0, 0), FontSize = 16, MinHeight = 34 };
         panel.Children.Add(targetBox);
 
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 16, 0, 0)
+            Margin = new Thickness(0, 20, 0, 0)
         };
-        var cancelButton = new Button { Content = _text.Get("Update.Cancel"), Width = 90, Margin = new Thickness(0, 0, 8, 0) };
-        var nextButton = new Button { Content = _text.Get("Dict.Next"), Width = 100 };
+        var cancelButton = new Button { Content = _text.Get("Update.Cancel"), Width = 100, Margin = new Thickness(0, 0, 8, 0) };
+        var nextButton = new Button { Content = _text.Get("Dict.Next"), Width = 110 };
         cancelButton.Click += (_, _) => window.Close();
         nextButton.Click += (_, _) =>
         {
@@ -435,63 +400,83 @@ public partial class MainWindow : Window
         return result;
     }
 
-    /// <summary>录音念词（向导第 2 步）：录音并提取 MFCC，失败返回 null。</summary>
+    /// <summary>录音念词（向导第 2 步）：显示「开始录音」按钮，用户点击后录音并提取 MFCC，失败返回 null。</summary>
     private async Task<double[][]?> RecordWordAsync(string target)
     {
         var tempWav = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"baiyunge-voice-{Guid.NewGuid():N}.wav");
         using var capture = new AudioCaptureService();
         try
         {
-            var recordingWindow = new Window
+            var tcs = new TaskCompletionSource<double[][]?>();
+            var window = new Window
             {
                 Title = _text.Get("Dict.RecordAdd"),
-                Width = 340,
-                Height = 130,
+                Width = 380,
+                Height = 240,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen,
                 ResizeMode = ResizeMode.NoResize,
                 Topmost = true,
                 WindowStyle = WindowStyle.ToolWindow,
-                ShowInTaskbar = false,
-                Content = new TextBlock
-                {
-                    Text = string.Format(_text.Get("Dict.Recording"), target),
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(24, 16, 24, 16),
-                    FontSize = 14,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    TextAlignment = TextAlignment.Center
-                }
+                ShowInTaskbar = false
             };
-            recordingWindow.Show();
-            try
-            {
-                await capture.StartAsync(
-                    _settings.MicDeviceId, tempWav, 2, 0,
-                    _settings.VadSensitivity, _settings.NoiseEnvironment, _settings.InputGainDb,
-                    _settings.CalibratedThresholdDb, CancellationToken.None);
-            }
-            finally
-            {
-                recordingWindow.Close();
-            }
 
-            var samples = MfccExtractor.ReadWav(tempWav);
-            var mfcc = MfccExtractor.Extract(samples);
-            if (mfcc.Length == 0)
+            var panel = new StackPanel { Margin = new Thickness(24) };
+            panel.Children.Add(new TextBlock
             {
-                MessageBox.Show(this, _text.Get("Dict.RecordFailed"),
-                    _text.Get("Dict.RecordAdd"), MessageBoxButton.OK, MessageBoxImage.Warning);
-                return null;
-            }
+                Text = string.Format(_text.Get("Dict.RecordPrompt"), target),
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 14,
+                TextAlignment = TextAlignment.Center
+            });
 
-            return mfcc;
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(this, exception.Message,
-                _text.Get("Dict.RecordAdd"), MessageBoxButton.OK, MessageBoxImage.Warning);
-            return null;
+            var statusText = new TextBlock
+            {
+                Text = string.Empty,
+                FontSize = 13,
+                TextAlignment = TextAlignment.Center,
+                Margin = new Thickness(0, 12, 0, 0)
+            };
+            panel.Children.Add(statusText);
+
+            var startButton = new Button
+            {
+                Content = _text.Get("Dict.StartRecord"),
+                Width = 150,
+                FontSize = 14,
+                MinHeight = 34,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 16, 0, 0)
+            };
+            startButton.Click += async (_, _) =>
+            {
+                startButton.IsEnabled = false;
+                statusText.Text = _text.Get("Dict.RecordingNow");
+                try
+                {
+                    await capture.StartAsync(
+                        _settings.MicDeviceId, tempWav, 2, 0,
+                        _settings.VadSensitivity, _settings.NoiseEnvironment, _settings.InputGainDb,
+                        _settings.CalibratedThresholdDb, CancellationToken.None);
+
+                    var samples = MfccExtractor.ReadWav(tempWav);
+                    var mfcc = MfccExtractor.Extract(samples);
+                    tcs.TrySetResult(mfcc.Length == 0 ? null : mfcc);
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(this, exception.Message,
+                        _text.Get("Dict.RecordAdd"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                    tcs.TrySetResult(null);
+                }
+
+                window.Close();
+            };
+            panel.Children.Add(startButton);
+
+            window.Content = panel;
+            window.ShowDialog();
+
+            return await tcs.Task;
         }
         finally
         {
