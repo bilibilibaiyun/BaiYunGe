@@ -33,6 +33,7 @@ public partial class MainWindow : Window
     private ComboBox? _gainCombo;
     private TextBlock? _calibrationStatus;
     private StackPanel? _calibrationActions;
+    private Button? _clearCalibrationButton;
     private double _pendingCalibrationThreshold;
     private TextBox? _shortcutBox;
     private ComboBox? _modeCombo;
@@ -439,6 +440,21 @@ public partial class MainWindow : Window
         _calibrationActions.Children.Add(redoButton);
         panel.Children.Add(_calibrationActions);
 
+        _clearCalibrationButton = new Button
+        {
+            Content = _text.Get("Calibration.Clear"),
+            Margin = new Thickness(0, 8, 0, 0),
+            Visibility = Visibility.Collapsed
+        };
+        _clearCalibrationButton.Click += (_, _) =>
+        {
+            _settings.CalibratedThresholdDb = 0;
+            Save();
+            _pendingCalibrationThreshold = 0;
+            ShowPage("calibration");
+        };
+        panel.Children.Add(_clearCalibrationButton);
+
         UpdateCalibrationStatus();
 
         return panel;
@@ -458,6 +474,10 @@ public partial class MainWindow : Window
             {
                 _calibrationActions.Visibility = Visibility.Visible;
             }
+            if (_clearCalibrationButton is not null)
+            {
+                _clearCalibrationButton.Visibility = Visibility.Collapsed;
+            }
         }
         else if (_settings.CalibratedThresholdDb < 0)
         {
@@ -466,6 +486,10 @@ public partial class MainWindow : Window
             {
                 _calibrationActions.Visibility = Visibility.Collapsed;
             }
+            if (_clearCalibrationButton is not null)
+            {
+                _clearCalibrationButton.Visibility = Visibility.Visible;
+            }
         }
         else
         {
@@ -473,6 +497,10 @@ public partial class MainWindow : Window
             if (_calibrationActions is not null)
             {
                 _calibrationActions.Visibility = Visibility.Collapsed;
+            }
+            if (_clearCalibrationButton is not null)
+            {
+                _clearCalibrationButton.Visibility = Visibility.Collapsed;
             }
         }
     }

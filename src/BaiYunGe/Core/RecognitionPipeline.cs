@@ -276,7 +276,10 @@ public sealed class RecognitionPipeline : IDisposable
                 settings.InferenceDevice,
                 _captureCancellation?.Token ?? CancellationToken.None).ConfigureAwait(false);
 
-            var prompt = BuildPrompt(settings);
+            // 动态词典：音频「太小声/接近噪声地板」时不用词典做参考词汇，从源头掐断词典幻觉
+            // （小声/低信噪比时 ASR 易把词典词汇当幻觉抄进结果）。余量 >= 6dB 才启用词典。
+            var speechMargin = captureResult.PeakRmsDb - captureResult.NoiseFloorDb;
+            var prompt = BuildPrompt(settings, speechMargin >= 6);
             // 识别语言独立于界面语言，默认 auto 由模型自动检测中英文。
             var language = string.IsNullOrWhiteSpace(settings.RecognitionLanguage)
                 ? "auto"
@@ -292,19 +295,15 @@ public sealed class RecognitionPipeline : IDisposable
             var dictionarySnapshot = settings.Dictionary.ToList();
             var text = _dictionary.ReplaceAliases(parsed.Text, dictionarySnapshot, settings.DictionaryEnabled);
 
-            // 有效性检测：转写结果为空/纯标点、明显静音，或「词典 echo + 小声」时视为幻觉，不键入。
-            // 采样/输入增益降低门槛后，小声说话（低信噪比）容易被 ASR 幻觉成词典词汇（prompt 里的参考词汇），
-            // 后处理兜底：识别结果完整匹配词典词且音频偏弱时判为幻觉。
-            var isSilentHallucination =
-                !string.IsNullOrWhiteSpace(text) && captureResult.PeakRmsDb < -55;
+            // 有效性检测：转写结果为空/纯标点，或「词典 echo + 接近噪声地板」时视为幻觉，不键入。
+            // 用相对噪声地板的余量判断「太小声/静音」，不受输入增益影响（增益会同时抬升峰值与噪声地板）。
             var isDictionaryEcho = IsDictionaryEcho(text, dictionarySnapshot, settings.DictionaryEnabled);
-            var isWeakSpeech = captureResult.PeakRmsDb < -45;
+            var isTooQuiet = speechMargin < 6;
             if (IsEmptyOrHallucination(text, settings.Dictionary, settings.DictionaryEnabled) ||
-                isSilentHallucination ||
-                (isDictionaryEcho && isWeakSpeech))
+                (isDictionaryEcho && isTooQuiet))
             {
                 CleanupWav();
-                _logger.Info($"No valid speech (empty or hallucination): peak={captureResult.PeakRmsDb:F1}dB text='{text}'");
+                _logger.Info($"No valid speech (empty or hallucination): margin={speechMargin:F1}dB text='{text}'");
                 var noSpeech = new PipelineResult(string.Empty, false, captureResult.StopReason, OutputResult.Failed, null);
                 _lastResult = noSpeech;
                 _wavPath = null;
@@ -497,9 +496,9 @@ public sealed class RecognitionPipeline : IDisposable
         return await tcs.Task.ConfigureAwait(false);
     }
 
-    private string BuildPrompt(AppSettings settings)
+    private string BuildPrompt(AppSettings settings, bool includeDictionary)
     {
-        if (!settings.DictionaryEnabled)
+        if (!settings.DictionaryEnabled || !includeDictionary)
         {
             return string.Empty;
         }

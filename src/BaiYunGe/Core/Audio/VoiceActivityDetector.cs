@@ -97,6 +97,9 @@ public sealed class VoiceActivityDetector
 
     public double PeakRmsDb => _peakRmsDb;
 
+    /// <summary>校准得到的噪声地板（dB）。用于相对判断（峰值相对噪声地板的余量），不受输入增益影响。</summary>
+    public double NoiseFloorDb => _noiseFloorDb;
+
     public bool HasSpeech => _hasSpeech;
 
     /// <summary>最近一次频谱分析的语音频段能量占比（0~1，调试诊断用）。</summary>

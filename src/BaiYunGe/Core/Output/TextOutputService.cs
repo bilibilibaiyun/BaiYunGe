@@ -92,9 +92,10 @@ public sealed class TextOutputService
 
     private async Task<OutputResult> CopyToClipboardAsync(string text, CancellationToken cancellationToken)
     {
-        // 只重试 3 次：剪贴板被外部进程（远程桌面/剪贴板工具）持续占用时，每次 OpenClipboard
-        // 会阻塞约 1 秒，重试 15 次会让浮窗卡在「识别中」十几秒。快速失败并明确提示更友好。
-        for (var attempt = 0; attempt < 3; attempt++)
+        // 剪贴板被外部进程（远程桌面/剪贴板工具）占用时 OpenClipboard 可能阻塞较久，
+        // 重试过多会让浮窗卡在「识别中」十几秒。用较短间隔重试 4 次（约 1 秒内出结果），
+        // 快速失败并明确提示，比长时间卡住更友好。
+        for (var attempt = 0; attempt < 4; attempt++)
         {
             try
             {
@@ -108,7 +109,7 @@ public sealed class TextOutputService
             }
 
             // 保持当前同步上下文（UI/STA 线程），否则重试会在线程池 MTA 线程执行导致 OLE/剪贴板失败。
-            await Task.Delay(150, cancellationToken);
+            await Task.Delay(100, cancellationToken);
         }
 
         _logger.Error("Failed to copy text to clipboard after retries.");

@@ -35,6 +35,7 @@ public sealed class LocalizedText
         ["Calibration.Use"] = ("使用此采样", "Use"),
         ["Calibration.Skip"] = ("不使用", "Skip"),
         ["Calibration.Redo"] = ("重新采样", "Redo"),
+        ["Calibration.Clear"] = ("清除采样", "Clear calibration"),
         ["Calibration.PendingUse"] = ("采样完成，检测阈值 {0:F1} dB。是否使用当前采样？", "Calibration done, threshold {0:F1} dB. Use this calibration?"),
         ["Calibration.Current"] = ("当前采样阈值：{0:F1} dB", "Current calibrated threshold: {0:F1} dB"),
         ["Calibration.None"] = ("尚未采样（使用环境模式阈值）", "Not calibrated yet (using environment-mode threshold)"),

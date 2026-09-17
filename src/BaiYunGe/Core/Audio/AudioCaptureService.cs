@@ -19,10 +19,11 @@ public sealed record AudioCaptureResult(
     TimeSpan Duration,
     bool HasSpeech,
     double PeakRmsDb,
+    double NoiseFloorDb,
     AudioCaptureStopReason StopReason)
 {
     public static AudioCaptureResult Empty =>
-        new(string.Empty, TimeSpan.Zero, false, double.NegativeInfinity, AudioCaptureStopReason.Requested);
+        new(string.Empty, TimeSpan.Zero, false, double.NegativeInfinity, double.NegativeInfinity, AudioCaptureStopReason.Requested);
 }
 
 /// <summary>
@@ -401,6 +402,7 @@ public sealed class AudioCaptureService : IDisposable
                 _clock.Elapsed,
                 _vad.HasUsableSpeech(),
                 _vad.PeakRmsDb,
+                _vad.NoiseFloorDb,
                 reason);
         }
 

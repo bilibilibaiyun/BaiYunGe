@@ -61,13 +61,9 @@ public static class EnvironmentCalibrator
         var noiseFloor = noiseRmsDb[(int)(noiseRmsDb.Count * NoisePercentile)];
         var speechPeak = speechRmsDb[(int)(speechRmsDb.Count * SpeechPercentile)];
 
-        // 人声与噪声差距太小（< 6dB）说明采样不可用（几乎没说话或全程在说）。
-        if (speechPeak - noiseFloor < 6)
-        {
-            return 0;
-        }
-
         // 阈值取噪声地板与语音峰值之间，略偏向噪声地板，更灵敏（能检测轻声）。
+        // 不再设「人声与噪声最小差值」门槛：小声说话时语音峰值可能只略高于噪声地板，
+        // 设门槛会误判采样失败。是否真的有人声已由频谱指纹（speechRmsDb 非空）保证。
         return noiseFloor + (speechPeak - noiseFloor) * ThresholdBias;
     }
 
