@@ -96,6 +96,7 @@ public partial class MainWindow : Window
     private void ShowPage(string page)
     {
         _currentPage = page;
+        UpdateNavHighlight(page);
         ContentHost.Children.Clear();
         switch (page)
         {
@@ -115,6 +116,26 @@ public partial class MainWindow : Window
                 ContentHost.Children.Add(BuildCalibrationPage());
                 break;
         }
+    }
+
+    private void UpdateNavHighlight(string page)
+    {
+        var accent = (System.Windows.Media.Brush)Application.Current.Resources["Theme.Accent"];
+        var white = System.Windows.Media.Brushes.White;
+        var textSecondary = (System.Windows.Media.Brush)Application.Current.Resources["Theme.TextSecondary"];
+        var transparent = System.Windows.Media.Brushes.Transparent;
+
+        void Apply(Button btn, bool active)
+        {
+            btn.Background = active ? accent : transparent;
+            btn.Foreground = active ? white : textSecondary;
+        }
+
+        Apply(NavGeneral, page == "general");
+        Apply(NavShortcut, page == "shortcut");
+        Apply(NavDictionary, page == "dictionary");
+        Apply(NavModel, page == "model");
+        Apply(NavCalibration, page == "calibration");
     }
 
     /// <summary>首次运行引导：直接定位到「模型」页，引导用户下载模型。</summary>
@@ -436,22 +457,34 @@ public partial class MainWindow : Window
     private async Task CalibrateEnvironmentAsync()
     {
         var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"baiyunge-calib-{Guid.NewGuid():N}.wav");
+        // 用独立录音实例：采样期间的静音/设备停止不触发主流程的错误浮窗。
+        using var calibrationCapture = new AudioCaptureService();
         try
         {
             MessageBox.Show(this, _text.Get("Calibration.Prompt"), _text.Get("Page.Calibration"),
                 MessageBoxButton.OK, MessageBoxImage.Information);
 
-            // 录 5 秒基准音频（静音自动停止关闭，录满 5 秒）。
-            await _audioCapture.StartAsync(
-                _settings.MicDeviceId,
-                tempPath,
-                5,
-                0,
-                _settings.VadSensitivity,
-                _settings.NoiseEnvironment,
-                _settings.InputGainDb,
-                0,
-                CancellationToken.None);
+            // 显示「录音中」非模态提示，让用户知道正在采样。
+            var recordingWindow = BuildCalibrationRecordingWindow();
+            recordingWindow.Show();
+            try
+            {
+                // 录 5 秒基准音频（静音自动停止关闭，录满 5 秒）。
+                await calibrationCapture.StartAsync(
+                    _settings.MicDeviceId,
+                    tempPath,
+                    5,
+                    0,
+                    _settings.VadSensitivity,
+                    _settings.NoiseEnvironment,
+                    _settings.InputGainDb,
+                    0,
+                    CancellationToken.None);
+            }
+            finally
+            {
+                recordingWindow.Close();
+            }
 
             var threshold = EnvironmentCalibrator.AnalyzeThreshold(tempPath);
             if (threshold >= 0)
@@ -469,7 +502,8 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            MessageBox.Show(this, exception.Message, _text.Get("Page.Calibration"),
+            _logger.Error("Calibration failed.", exception);
+            MessageBox.Show(this, _text.Get("Calibration.Failed"), _text.Get("Page.Calibration"),
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
@@ -485,6 +519,31 @@ public partial class MainWindow : Window
             {
             }
         }
+    }
+
+    private Window BuildCalibrationRecordingWindow()
+    {
+        return new Window
+        {
+            Title = _text.Get("Page.Calibration"),
+            Width = 340,
+            Height = 130,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            ResizeMode = ResizeMode.NoResize,
+            Topmost = true,
+            WindowStyle = WindowStyle.ToolWindow,
+            ShowInTaskbar = false,
+            Content = new TextBlock
+            {
+                Text = _text.Get("Calibration.Recording"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(24, 16, 24, 16),
+                FontSize = 14,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                TextAlignment = TextAlignment.Center
+            }
+        };
     }
 
     private UIElement BuildModelPage()

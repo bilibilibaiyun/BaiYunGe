@@ -30,6 +30,7 @@ public sealed class LocalizedText
         ["Calibration.Hint"] = ("适用于固定环境：在安静或嘈杂的固定环境中，录制一段你平时放松说话的音频，软件会自动分析并设定最适合的检测阈值。", "For a fixed environment: record a short clip of yourself speaking naturally; the app analyzes it and sets the most suitable detection threshold."),
         ["Calibration.Start"] = ("开始采样", "Start Calibration"),
         ["Calibration.Prompt"] = ("点击确定后，请用平时说话的音量，连续说五遍「你好、你好、你好、你好、你好」。", "After clicking OK, please say \"hello\" five times in a row at your normal speaking volume."),
+        ["Calibration.Recording"] = ("正在录音采样…\n请连续说五遍「你好」", "Recording…\nPlease say \"hello\" five times"),
         ["Calibration.Current"] = ("当前采样阈值：{0:F1} dB", "Current calibrated threshold: {0:F1} dB"),
         ["Calibration.None"] = ("尚未采样（使用环境模式阈值）", "Not calibrated yet (using environment-mode threshold)"),
         ["Calibration.Done"] = ("采样完成，检测阈值已设为 {0:F1} dB。", "Calibration done. Detection threshold set to {0:F1} dB."),
