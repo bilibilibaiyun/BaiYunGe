@@ -16,7 +16,7 @@ public sealed class VoiceActivityDetector
     private const double MinimumSpeechDb = -68;
 
     /// <summary>连续超过阈值的帧数达到该值才判为语音，过滤瞬时环境杂音尖峰（键盘声、物体碰撞等）。</summary>
-    private const int ConsecutiveSpeechFramesRequired = 3;
+    private const int ConsecutiveSpeechFramesRequired = 2;
 
     // 频谱分析参数：16kHz 采样，512 点 FFT，分辨率 31.25Hz。
     // 人声能量集中在语音频段，风扇等持续低频杂音能量集中在 <187Hz。
@@ -26,8 +26,8 @@ public sealed class VoiceActivityDetector
     private const int SampleRate = 16000;
     private const int VoiceBandStartBin = 6;   // 约 187Hz
     private const int VoiceBandEndBin = 109;   // 约 3406Hz
-    /// <summary>语音频段能量占全频段（除 DC）的比例阈值，高于此值视为人声。</summary>
-    private const double VoiceRatioThreshold = 0.40;
+    /// <summary>语音频段能量占全频段（除 DC）的比例阈值，高于此值视为人声。小声说话时占比略低，故下调。</summary>
+    private const double VoiceRatioThreshold = 0.32;
 
     private readonly double _silenceStopMs;
     private readonly double _speechFloorDb;

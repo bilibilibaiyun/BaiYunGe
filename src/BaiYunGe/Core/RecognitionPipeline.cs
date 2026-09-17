@@ -295,6 +295,9 @@ public sealed class RecognitionPipeline : IDisposable
             // 词典列表可能在 UI 线程被增删：枚举前先快照，避免跨线程 Collection modified。
             var dictionarySnapshot = settings.Dictionary.ToList();
             var text = _dictionary.ReplaceAliases(parsed.Text, dictionarySnapshot, settings.DictionaryEnabled);
+            // 谐音/形近字纠正：识别结果与词典词仅差 1 字（谐音错误，如「瑞星」→「瑞幸」）时
+            // 纠正为目标词，弥补移除热词偏置后词典词识别变差的问题。
+            text = CorrectHomophone(text, dictionarySnapshot, settings.DictionaryEnabled);
 
             // 有效性检测：转写结果为空/纯标点，或「词典 echo + 接近噪声地板」时视为幻觉，不键入。
             // 用相对噪声地板的余量判断「太小声/静音」，不受输入增益影响（增益会同时抬升峰值与噪声地板）。
@@ -349,11 +352,18 @@ public sealed class RecognitionPipeline : IDisposable
         IReadOnlyList<DictionaryEntry> dictionary,
         bool dictionaryEnabled)
     {
-        // 保留参数与签名不变：词典 echo 检测已移除，静音/杂音由 VAD 负责拦截。
         _ = dictionary;
         _ = dictionaryEnabled;
 
         if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        // 默认文本幻觉：llama-server 对静音/噪声/极低质量音频会输出它自己的系统提示语
+        // （如 "Transcribe audio to text (language: auto)."），这不是用户说的话，判为无有效语音。
+        if (text.Contains("Transcribe audio to text", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("transcribe audio", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
@@ -454,6 +464,47 @@ public sealed class RecognitionPipeline : IDisposable
         }
 
         return dp[a.Length, b.Length];
+    }
+
+    /// <summary>
+    /// 谐音/形近字纠正：识别结果与词典词仅差 1 字（谐音错误，如「瑞星」→「瑞幸」）时，
+    /// 纠正为目标词。用于弥补移除热词偏置后词典词识别变差（谐音错误）的问题。
+    /// </summary>
+    private static string CorrectHomophone(string text, IReadOnlyList<DictionaryEntry> dictionary, bool dictionaryEnabled)
+    {
+        if (!dictionaryEnabled || dictionary is null || dictionary.Count == 0)
+        {
+            return text;
+        }
+
+        var normalized = NormalizeText(text);
+        if (string.IsNullOrEmpty(normalized) || normalized.Length < 2)
+        {
+            return text;
+        }
+
+        var bestDistance = int.MaxValue;
+        var bestTarget = text;
+        foreach (var entry in dictionary)
+        {
+            foreach (var word in new[] { entry.Target, entry.Alias })
+            {
+                var w = NormalizeText(word);
+                if (string.IsNullOrEmpty(w))
+                {
+                    continue;
+                }
+
+                var dist = Levenshtein(normalized, w);
+                if (dist <= 1 && dist < bestDistance)
+                {
+                    bestDistance = dist;
+                    bestTarget = entry.Target;
+                }
+            }
+        }
+
+        return bestDistance <= 1 ? bestTarget : text;
     }
 
     private async Task<PipelineResult> CompleteErrorAsync(Exception exception)
