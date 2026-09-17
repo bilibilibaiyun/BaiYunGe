@@ -353,6 +353,11 @@ public partial class MainWindow : Window
             {
                 await RecordVoiceTemplateAsync(entry);
             }
+            else
+            {
+                MessageBox.Show(this, _text.Get("Dict.SelectFirst"),
+                    _text.Get("Dict.RecordVoice"), MessageBoxButton.OK, MessageBoxImage.Information);
+            }
         };
         panel.Children.Add(recordButton);
 
@@ -369,11 +374,41 @@ public partial class MainWindow : Window
             MessageBox.Show(this, string.Format(_text.Get("Dict.RecordPrompt"), entry.Target),
                 _text.Get("Dict.RecordVoice"), MessageBoxButton.OK, MessageBoxImage.Information);
 
-            // 录 2 秒（静音不停止）。
-            await capture.StartAsync(
-                _settings.MicDeviceId, tempWav, 2, 0,
-                _settings.VadSensitivity, _settings.NoiseEnvironment, _settings.InputGainDb,
-                _settings.CalibratedThresholdDb, CancellationToken.None);
+            // 显示「录音中」非模态提示，让用户知道正在录音。
+            var recordingWindow = new Window
+            {
+                Title = _text.Get("Dict.RecordVoice"),
+                Width = 340,
+                Height = 130,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                ResizeMode = ResizeMode.NoResize,
+                Topmost = true,
+                WindowStyle = WindowStyle.ToolWindow,
+                ShowInTaskbar = false,
+                Content = new TextBlock
+                {
+                    Text = string.Format(_text.Get("Dict.Recording"), entry.Target),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(24, 16, 24, 16),
+                    FontSize = 14,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    TextAlignment = TextAlignment.Center
+                }
+            };
+            recordingWindow.Show();
+            try
+            {
+                // 录 2 秒（静音不停止）。
+                await capture.StartAsync(
+                    _settings.MicDeviceId, tempWav, 2, 0,
+                    _settings.VadSensitivity, _settings.NoiseEnvironment, _settings.InputGainDb,
+                    _settings.CalibratedThresholdDb, CancellationToken.None);
+            }
+            finally
+            {
+                recordingWindow.Close();
+            }
 
             var samples = MfccExtractor.ReadWav(tempWav);
             var mfcc = MfccExtractor.Extract(samples);
