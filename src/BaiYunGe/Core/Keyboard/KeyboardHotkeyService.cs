@@ -20,6 +20,7 @@ public sealed class KeyboardHotkeyService : IDisposable
     private bool _recordingHotkey;
     private int _suppressKey;
     private bool _wakeKeyDown;
+    private System.Threading.Timer? _pollTimer;
 
     public KeyboardHotkeyService()
     {
@@ -79,6 +80,41 @@ public sealed class KeyboardHotkeyService : IDisposable
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "SetWindowsHookEx failed.");
             }
+        }
+
+        // 轮询兜底：即使本程序的键盘钩子被其他软件（后注册的低层钩子）吞掉按键，
+        // 也直接查 GetAsyncKeyState 的硬件实时状态，强制检测快捷键按下/松开。
+        _pollTimer ??= new System.Threading.Timer(
+            _ => PollHotkeyState(),
+            null,
+            300,
+            50);
+    }
+
+    /// <summary>
+    /// 轮询检测快捷键边沿：用 GetAsyncKeyState 直接读硬件状态，不依赖钩子消息，
+    /// 因此即使其他软件的低层键盘钩子 return 1 吞掉按键，也能「霸道」触发唤醒/停止。
+    /// 与钩子共用 _wakeKeyDown 状态做去重，避免重复触发。
+    /// </summary>
+    private void PollHotkeyState()
+    {
+        try
+        {
+            if (IsHotkeyDown())
+            {
+                if (MarkWakeKeyDown())
+                {
+                    RaiseAsync(() => WakePressed?.Invoke(this, EventArgs.Empty));
+                }
+            }
+            else if (ResetWakeKeyDown())
+            {
+                RaiseAsync(() => WakeReleased?.Invoke(this, EventArgs.Empty));
+            }
+        }
+        catch
+        {
+            // 轮询异常不影响主流程。
         }
     }
 
@@ -394,6 +430,8 @@ public sealed class KeyboardHotkeyService : IDisposable
         }
 
         _disposed = true;
+        _pollTimer?.Dispose();
+        _pollTimer = null;
         if (_hookHandle != IntPtr.Zero)
         {
             NativeMethods.UnhookWindowsHookEx(_hookHandle);

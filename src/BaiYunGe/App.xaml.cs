@@ -35,7 +35,6 @@ public partial class App : Application
     private bool _listening;
     private DateTime _listeningStarted;
     private System.Threading.Timer? _keepAliveTimer;
-    private DispatcherTimer? _holdReleaseTimer;
     private int _overlayHideGeneration;
     private UpdateChecker? _updateChecker;
     private UpdateInfo? _latestUpdateInfo;
@@ -388,12 +387,6 @@ public partial class App : Application
         {
             _hotkeyService!.SuppressWakeKey();
         }
-        else
-        {
-            // 按住模式：启动轮询兜底，检测快捷键是否已松开。
-            // Win 等特殊键的 keyup 可能被系统/其他软件吞掉，导致松键后仍一直录音。
-            StartHoldReleasePolling();
-        }
 
         try
         {
@@ -407,29 +400,7 @@ public partial class App : Application
         finally
         {
             _hotkeyService!.ReleaseWakeKey();
-            StopHoldReleasePolling();
         }
-    }
-
-    /// <summary>按住模式轮询兜底：定期检测快捷键是否已松开，松开则停止录音。</summary>
-    private void StartHoldReleasePolling()
-    {
-        StopHoldReleasePolling();
-        _holdReleaseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
-        _holdReleaseTimer.Tick += (_, _) =>
-        {
-            if (!_hotkeyService!.IsHotkeyDown() && _pipeline!.CurrentStage == PipelineStage.Listening)
-            {
-                _ = StopListeningAsync();
-            }
-        };
-        _holdReleaseTimer.Start();
-    }
-
-    private void StopHoldReleasePolling()
-    {
-        _holdReleaseTimer?.Stop();
-        _holdReleaseTimer = null;
     }
 
     private async Task StopListeningAsync()
