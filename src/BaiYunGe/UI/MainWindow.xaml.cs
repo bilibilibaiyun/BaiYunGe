@@ -296,8 +296,9 @@ public partial class MainWindow : Window
 
         _dictList = new ListView { Height = 220, Margin = new Thickness(0, 10, 0, 0) };
         var gridView = new GridView();
-        gridView.Columns.Add(new GridViewColumn { Header = _text.Get("Dict.Alias"), Width = 180, DisplayMemberBinding = new System.Windows.Data.Binding("Alias") });
-        gridView.Columns.Add(new GridViewColumn { Header = _text.Get("Dict.Target"), Width = 220, DisplayMemberBinding = new System.Windows.Data.Binding("Target") });
+        gridView.Columns.Add(new GridViewColumn { Header = _text.Get("Dict.Alias"), Width = 150, DisplayMemberBinding = new System.Windows.Data.Binding("Alias") });
+        gridView.Columns.Add(new GridViewColumn { Header = _text.Get("Dict.Target"), Width = 180, DisplayMemberBinding = new System.Windows.Data.Binding("Target") });
+        gridView.Columns.Add(new GridViewColumn { Header = _text.Get("Dict.Type"), Width = 70, DisplayMemberBinding = new System.Windows.Data.Binding("TypeText") });
         _dictList.View = gridView;
         RefreshDictList();
         panel.Children.Add(_dictList);
@@ -346,38 +347,104 @@ public partial class MainWindow : Window
         };
         panel.Children.Add(removeButton);
 
-        var recordButton = new Button { Content = _text.Get("Dict.RecordVoice"), Margin = new Thickness(0, 4, 0, 0) };
-        recordButton.Click += async (_, _) =>
-        {
-            if (_dictList.SelectedItem is DictionaryEntry entry)
-            {
-                await RecordVoiceTemplateAsync(entry);
-            }
-            else
-            {
-                MessageBox.Show(this, _text.Get("Dict.SelectFirst"),
-                    _text.Get("Dict.RecordVoice"), MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-        };
+        var recordButton = new Button { Content = _text.Get("Dict.RecordAdd"), Margin = new Thickness(0, 4, 0, 0) };
+        recordButton.Click += async (_, _) => await RecordAndAddWordAsync();
         panel.Children.Add(recordButton);
 
         return panel;
     }
 
-    /// <summary>录音念词：录下用户念该词的音频，提取 MFCC 模板保存，供识别时声纹比对。</summary>
-    private async Task RecordVoiceTemplateAsync(DictionaryEntry entry)
+    /// <summary>向导式录音添加：弹窗输入词语 → 下一步 → 录音念词 → 完成 → 添加到语音词典。</summary>
+    private async Task RecordAndAddWordAsync()
+    {
+        try
+        {
+            var (alias, target) = PromptWordInput();
+            if (string.IsNullOrWhiteSpace(alias) || string.IsNullOrWhiteSpace(target))
+            {
+                return;
+            }
+
+            var mfcc = await RecordWordAsync(target);
+            if (mfcc is null)
+            {
+                return;
+            }
+
+            var entry = new DictionaryEntry { Alias = alias, Target = target };
+            var templatePath = GetVoiceTemplatePath(entry);
+            VoiceTemplateStore.Save(templatePath, mfcc);
+            entry = entry with { VoicePath = templatePath };
+
+            _settings.Dictionary.Add(entry);
+            Save();
+            RefreshDictList();
+            MessageBox.Show(this, _text.Get("Dict.RecordDone"),
+                _text.Get("Dict.RecordAdd"), MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message,
+                _text.Get("Dict.RecordAdd"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>弹窗输入词语（别名 + 目标词），取消返回空。</summary>
+    private (string? Alias, string? Target) PromptWordInput()
+    {
+        var result = (Alias: (string?)null, Target: (string?)null);
+        var window = new Window
+        {
+            Title = _text.Get("Dict.RecordAdd"),
+            Width = 380,
+            Height = 240,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStyle = WindowStyle.ToolWindow
+        };
+
+        var panel = new StackPanel { Margin = new Thickness(16) };
+        panel.Children.Add(Label(_text.Get("Dict.Alias")));
+        var aliasBox = new TextBox { Margin = new Thickness(0, 4, 0, 0) };
+        panel.Children.Add(aliasBox);
+        panel.Children.Add(Label(_text.Get("Dict.Target")));
+        var targetBox = new TextBox { Margin = new Thickness(0, 4, 0, 0) };
+        panel.Children.Add(targetBox);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 16, 0, 0)
+        };
+        var cancelButton = new Button { Content = _text.Get("Update.Cancel"), Width = 90, Margin = new Thickness(0, 0, 8, 0) };
+        var nextButton = new Button { Content = _text.Get("Dict.Next"), Width = 100 };
+        cancelButton.Click += (_, _) => window.Close();
+        nextButton.Click += (_, _) =>
+        {
+            result = (aliasBox.Text.Trim(), targetBox.Text.Trim());
+            window.Close();
+        };
+        buttons.Children.Add(cancelButton);
+        buttons.Children.Add(nextButton);
+        panel.Children.Add(buttons);
+
+        window.Content = panel;
+        window.ShowDialog();
+        return result;
+    }
+
+    /// <summary>录音念词（向导第 2 步）：录音并提取 MFCC，失败返回 null。</summary>
+    private async Task<double[][]?> RecordWordAsync(string target)
     {
         var tempWav = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"baiyunge-voice-{Guid.NewGuid():N}.wav");
         using var capture = new AudioCaptureService();
         try
         {
-            MessageBox.Show(this, string.Format(_text.Get("Dict.RecordPrompt"), entry.Target),
-                _text.Get("Dict.RecordVoice"), MessageBoxButton.OK, MessageBoxImage.Information);
-
-            // 显示「录音中」非模态提示，让用户知道正在录音。
             var recordingWindow = new Window
             {
-                Title = _text.Get("Dict.RecordVoice"),
+                Title = _text.Get("Dict.RecordAdd"),
                 Width = 340,
                 Height = 130,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen,
@@ -387,7 +454,7 @@ public partial class MainWindow : Window
                 ShowInTaskbar = false,
                 Content = new TextBlock
                 {
-                    Text = string.Format(_text.Get("Dict.Recording"), entry.Target),
+                    Text = string.Format(_text.Get("Dict.Recording"), target),
                     TextWrapping = TextWrapping.Wrap,
                     Margin = new Thickness(24, 16, 24, 16),
                     FontSize = 14,
@@ -399,7 +466,6 @@ public partial class MainWindow : Window
             recordingWindow.Show();
             try
             {
-                // 录 2 秒（静音不停止）。
                 await capture.StartAsync(
                     _settings.MicDeviceId, tempWav, 2, 0,
                     _settings.VadSensitivity, _settings.NoiseEnvironment, _settings.InputGainDb,
@@ -415,28 +481,17 @@ public partial class MainWindow : Window
             if (mfcc.Length == 0)
             {
                 MessageBox.Show(this, _text.Get("Dict.RecordFailed"),
-                    _text.Get("Dict.RecordVoice"), MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
+                    _text.Get("Dict.RecordAdd"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                return null;
             }
 
-            var templatePath = GetVoiceTemplatePath(entry);
-            VoiceTemplateStore.Save(templatePath, mfcc);
-
-            var index = _settings.Dictionary.IndexOf(entry);
-            if (index >= 0)
-            {
-                _settings.Dictionary[index] = entry with { VoicePath = templatePath };
-            }
-
-            Save();
-            RefreshDictList();
-            MessageBox.Show(this, _text.Get("Dict.RecordDone"),
-                _text.Get("Dict.RecordVoice"), MessageBoxButton.OK, MessageBoxImage.Information);
+            return mfcc;
         }
         catch (Exception exception)
         {
             MessageBox.Show(this, exception.Message,
-                _text.Get("Dict.RecordVoice"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                _text.Get("Dict.RecordAdd"), MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
         }
         finally
         {

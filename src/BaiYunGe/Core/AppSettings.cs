@@ -8,8 +8,14 @@ public sealed record DictionaryEntry
 
     public string Target { get; init; } = string.Empty;
 
-    /// <summary>录音模板路径（用户录音念该词的 MFCC 特征文件，JSON）。空表示未录音。</summary>
+    /// <summary>录音模板路径（用户录音念该词的 MFCC 特征文件，JSON）。空表示未录音（默认词典）。</summary>
     public string VoicePath { get; init; } = string.Empty;
+
+    /// <summary>是否为语音词典词（有录音模板）。</summary>
+    public bool IsVoice => !string.IsNullOrWhiteSpace(VoicePath);
+
+    /// <summary>类型显示文本（默认/语音）。</summary>
+    public string TypeText => IsVoice ? "语音" : "默认";
 }
 
 public sealed class AppSettings
