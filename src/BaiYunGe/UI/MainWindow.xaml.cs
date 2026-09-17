@@ -29,6 +29,8 @@ public partial class MainWindow : Window
     private ComboBox? _micCombo;
     private ComboBox? _deviceCombo;
     private ComboBox? _recognitionLangCombo;
+    private ComboBox? _noiseEnvCombo;
+    private ComboBox? _gainCombo;
     private TextBox? _shortcutBox;
     private ComboBox? _modeCombo;
     private CheckBox? _dictEnabled;
@@ -202,6 +204,40 @@ public partial class MainWindow : Window
         var testButton = new Button { Content = _text.Get("General.TestMic") };
         testButton.Click += async (_, _) => await TestMicrophoneAsync();
         panel.Children.Add(testButton);
+
+        panel.Children.Add(Label(_text.Get("General.NoiseEnv")));
+        _noiseEnvCombo = new ComboBox();
+        _noiseEnvCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.NoiseAuto"), Tag = "auto" });
+        _noiseEnvCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.NoiseQuiet"), Tag = "quiet" });
+        _noiseEnvCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.NoiseNoisy"), Tag = "noisy" });
+        _noiseEnvCombo.SelectionChanged += (_, _) =>
+        {
+            if (_noiseEnvCombo.SelectedItem is ComboBoxItem { Tag: string env } && _settings.NoiseEnvironment != env)
+            {
+                _settings.NoiseEnvironment = env;
+                Save();
+            }
+        };
+        SelectCombo(_noiseEnvCombo, _settings.NoiseEnvironment);
+        panel.Children.Add(_noiseEnvCombo);
+
+        panel.Children.Add(Label(_text.Get("General.InputGain")));
+        _gainCombo = new ComboBox();
+        foreach (var g in new[] { 0, 6, 12, 18 })
+        {
+            _gainCombo.Items.Add(new ComboBoxItem { Content = g == 0 ? _text.Get("General.GainOff") : $"+{g} dB", Tag = g.ToString() });
+        }
+        _gainCombo.SelectionChanged += (_, _) =>
+        {
+            if (_gainCombo.SelectedItem is ComboBoxItem { Tag: string gainStr } &&
+                int.TryParse(gainStr, out var gain) && _settings.InputGainDb != gain)
+            {
+                _settings.InputGainDb = gain;
+                Save();
+            }
+        };
+        SelectCombo(_gainCombo, _settings.InputGainDb.ToString());
+        panel.Children.Add(_gainCombo);
 
         var autoStart = new CheckBox { Content = _text.Get("General.AutoStart"), IsChecked = _settings.AutoStart };
         autoStart.Checked += (_, _) => { _settings.AutoStart = true; Save(); SettingsChanged?.Invoke(); };
@@ -535,6 +571,8 @@ public partial class MainWindow : Window
                 3,
                 1000,
                 _settings.VadSensitivity,
+                _settings.NoiseEnvironment,
+                _settings.InputGainDb,
                 CancellationToken.None);
 
             var text = result.HasSpeech

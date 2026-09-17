@@ -125,6 +125,8 @@ public sealed class RecognitionPipeline : IDisposable
                 settings.MaxRecordSeconds,
                 silenceStopMs,
                 settings.VadSensitivity,
+                settings.NoiseEnvironment,
+                settings.InputGainDb,
                 _captureCancellation.Token);
 
             await Task.Delay(50, cancellationToken).ConfigureAwait(false);
@@ -288,11 +290,14 @@ public sealed class RecognitionPipeline : IDisposable
             // 词典列表可能在 UI 线程被增删：枚举前先快照，避免跨线程 Collection modified。
             var text = _dictionary.ReplaceAliases(parsed.Text, settings.Dictionary.ToList(), settings.DictionaryEnabled);
 
-            // 有效性检测：转写结果为空或纯标点时视为无有效语音，不键入任何内容。
-            if (IsEmptyOrHallucination(text, settings.Dictionary, settings.DictionaryEnabled))
+            // 有效性检测：转写结果为空/纯标点，或 PeakRmsDb 极低（明显静音）时视为幻觉，不键入任何内容。
+            // 降噪麦克风静音时可能被 VAD 误判为语音，llama-server 对静音会幻觉出词典词汇（词典 echo）。
+            var isSilentHallucination =
+                !string.IsNullOrWhiteSpace(text) && captureResult.PeakRmsDb < -55;
+            if (IsEmptyOrHallucination(text, settings.Dictionary, settings.DictionaryEnabled) || isSilentHallucination)
             {
                 CleanupWav();
-                _logger.Info($"No valid speech (empty or hallucination): '{text}'");
+                _logger.Info($"No valid speech (empty or hallucination): peak={captureResult.PeakRmsDb:F1}dB text='{text}'");
                 var noSpeech = new PipelineResult(string.Empty, false, captureResult.StopReason, OutputResult.Failed, null);
                 _lastResult = noSpeech;
                 _wavPath = null;

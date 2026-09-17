@@ -42,6 +42,12 @@ public sealed class AppSettings
 
     public int VadSensitivity { get; set; } = 1;
 
+    /// <summary>环境模式：auto（自动，动态自适应）/ quiet（安静，低阈值）/ noisy（嘈杂，高阈值）。</summary>
+    public string NoiseEnvironment { get; set; } = "auto";
+
+    /// <summary>输入增益（dB），补偿降噪麦克风输出电平偏低。0~18，默认 0（不增益）。</summary>
+    public int InputGainDb { get; set; }
+
     /// <summary>无输入框时的动作，固定 clipboard。</summary>
     public string NoInputAction { get; set; } = "clipboard";
 
@@ -85,6 +91,8 @@ public sealed class AppSettings
             MaxRecordSeconds = MaxRecordSeconds,
             SilenceStopMs = SilenceStopMs,
             VadSensitivity = VadSensitivity,
+            NoiseEnvironment = NoiseEnvironment,
+            InputGainDb = InputGainDb,
             NoInputAction = NoInputAction,
             OutputMethod = OutputMethod,
             DictionaryEnabled = DictionaryEnabled,

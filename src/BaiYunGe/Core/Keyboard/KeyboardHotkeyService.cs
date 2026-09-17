@@ -336,7 +336,15 @@ public sealed class KeyboardHotkeyService : IDisposable
             hotkey = _hotkey;
         }
 
-        return !hotkey.IsEmpty && IsComboDown(hotkey, hotkey.Key);
+        if (hotkey.IsEmpty)
+        {
+            return false;
+        }
+
+        // 关键：这里传 0（非主键）而非 hotkey.Key。IsComboDown 里 primaryDown 用
+        // 「vkCode == hotkey.Key || IsKeyDown(hotkey.Key)」判断，若传 hotkey.Key 会因
+        // 前半句恒真而短路，导致只按修饰键（如长按 Ctrl）也被误判为组合按下。
+        return IsComboDown(hotkey, 0);
     }
 
     private bool CancelRecordingIfAny()

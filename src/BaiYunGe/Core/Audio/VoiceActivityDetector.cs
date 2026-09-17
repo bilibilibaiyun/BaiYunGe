@@ -31,6 +31,8 @@ public sealed class VoiceActivityDetector
 
     private readonly double _silenceStopMs;
     private readonly double _speechFloorDb;
+    private readonly double _noiseOffsetDb;
+    private readonly double _thresholdCeilingDb;
     private readonly List<double> _calibrationSamples = new();
 
     private double _calibrationElapsedMs;
@@ -44,19 +46,39 @@ public sealed class VoiceActivityDetector
     private readonly List<float> _spectrumBuffer = new();
     private double _lastVoiceRatio;
 
-    public VoiceActivityDetector(int sensitivity, int silenceStopMs)
+    public VoiceActivityDetector(int sensitivity, int silenceStopMs, string environment = "auto")
     {
         // silenceStopMs <= 0 表示禁用静音自动停止（hold 模式：按住即录音，仅松开键停止）。
         _silenceStopMs = silenceStopMs <= 0
             ? double.PositiveInfinity
             : Math.Max(200, silenceStopMs);
-        // 语音判定阈值下限：降噪麦克风电平偏低，阈值相应下调。
-        _speechFloorDb = sensitivity switch
+
+        // 环境模式决定语音阈值下限、噪声地板偏移、阈值上限。
+        // 参考数据（网络调研）：安静环境 -65~-50dB，普通办公 -45~-35dB，嘈杂 -35~-20dB。
+        // 降噪麦克风输出电平整体偏低，安静模式下调阈值下限，轻声也能检测。
+        switch (environment)
         {
-            <= 0 => -50,
-            1 => -54,
-            _ => -58
-        };
+            case "quiet":
+                _speechFloorDb = -62;
+                _noiseOffsetDb = 8;
+                _thresholdCeilingDb = -32;
+                break;
+            case "noisy":
+                _speechFloorDb = -45;
+                _noiseOffsetDb = 14;
+                _thresholdCeilingDb = -40;
+                break;
+            default:
+                _speechFloorDb = sensitivity switch
+                {
+                    <= 0 => -50,
+                    1 => -54,
+                    _ => -58
+                };
+                _noiseOffsetDb = 12;
+                _thresholdCeilingDb = -36;
+                break;
+        }
     }
 
     public event EventHandler? SpeechDetected;
@@ -157,7 +179,7 @@ public sealed class VoiceActivityDetector
             return _speechFloorDb;
         }
 
-        return Math.Max(_speechFloorDb, Math.Min(-36, _noiseFloorDb + 12));
+        return Math.Max(_speechFloorDb, Math.Min(_thresholdCeilingDb, _noiseFloorDb + _noiseOffsetDb));
     }
 
     private static double Median(List<double> samples)

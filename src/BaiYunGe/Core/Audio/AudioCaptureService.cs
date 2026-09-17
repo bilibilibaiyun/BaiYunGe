@@ -55,6 +55,8 @@ public sealed class AudioCaptureService : IDisposable
         int maxRecordSeconds,
         int silenceStopMs,
         int vadSensitivity,
+        string environment,
+        int gainDb,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -64,7 +66,7 @@ public sealed class AudioCaptureService : IDisposable
         // 避免阻塞 UI 线程导致整个软件卡死（此前只把 StartRecording 移到了后台，
         // 但 Resolve 与 CaptureSession 构造仍在 UI 线程，仍会卡死）。
         return Task.Run(
-            () => StartCoreAsync(deviceId, outputPath, maxRecordSeconds, silenceStopMs, vadSensitivity, cancellationToken),
+            () => StartCoreAsync(deviceId, outputPath, maxRecordSeconds, silenceStopMs, vadSensitivity, environment, gainDb, cancellationToken),
             cancellationToken);
     }
 
@@ -74,6 +76,8 @@ public sealed class AudioCaptureService : IDisposable
         int maxRecordSeconds,
         int silenceStopMs,
         int vadSensitivity,
+        string environment,
+        int gainDb,
         CancellationToken cancellationToken)
     {
         CaptureSession session;
@@ -85,7 +89,7 @@ public sealed class AudioCaptureService : IDisposable
             }
 
             var device = _deviceEnumerator.Resolve(deviceId);
-            var vad = new VoiceActivityDetector(vadSensitivity, silenceStopMs);
+            var vad = new VoiceActivityDetector(vadSensitivity, silenceStopMs, environment);
             session = new CaptureSession(
                 device,
                 outputPath,
@@ -93,6 +97,7 @@ public sealed class AudioCaptureService : IDisposable
                 _converter,
                 level => LevelChanged?.Invoke(this, level),
                 maxRecordSeconds,
+                gainDb,
                 StopSessionAsync);
             _session = session;
         }
@@ -215,6 +220,7 @@ public sealed class AudioCaptureService : IDisposable
         private readonly VoiceActivityDetector _vad;
         private readonly PcmAudioConverter _converter;
         private readonly Action<float> _levelCallback;
+        private readonly double _gainFactor;
         private readonly Stopwatch _clock = new();
         private readonly TaskCompletionSource<AudioCaptureResult> _completion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -228,8 +234,11 @@ public sealed class AudioCaptureService : IDisposable
             PcmAudioConverter converter,
             Action<float> levelCallback,
             int maxRecordSeconds,
+            int gainDb,
             Func<CaptureSession, AudioCaptureStopReason, Task<AudioCaptureResult>> stopCallback)
         {
+            // 输入增益：dB 转线性因子（gainDb=0 时不增益）。用于补偿降噪麦克风输出电平偏低。
+            _gainFactor = gainDb > 0 ? Math.Pow(10, gainDb / 20.0) : 1.0;
             // 显式指定 16kHz/16 位/mono：NAudio 的 WasapiCapture 带 AutoConvertPcm 标志，
             // WASAPI 会把设备原生格式（含专业声卡如 Focusrite 的 8 位/24 位 MixFormat）
             // 自动转换为目标格式，避免用 MixFormat 录音导致 8 位低质量、识别失败。
@@ -339,6 +348,17 @@ public sealed class AudioCaptureService : IDisposable
             {
                 var mono = _converter.ToMonoFloat(args.Buffer, args.BytesRecorded, _capture.WaveFormat);
                 var resampled = _converter.Resample(mono, _capture.WaveFormat.SampleRate);
+
+                // 输入增益：补偿降噪麦克风输出电平偏低。增益同时作用于写入文件与 VAD，
+                // 使识别与检测使用同一份（增益后的）电平。
+                if (_gainFactor != 1.0)
+                {
+                    for (var i = 0; i < resampled.Length; i++)
+                    {
+                        resampled[i] = (float)(resampled[i] * _gainFactor);
+                    }
+                }
+
                 var pcm16 = _converter.ToPcm16(resampled);
                 _writer.Write(pcm16, 0, pcm16.Length);
 
