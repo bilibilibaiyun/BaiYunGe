@@ -846,7 +846,7 @@ public partial class MainWindow : Window
 
         foreach (var release in releases)
         {
-            var target = ReleaseCatalog.IsStable(release.Version) ? stableListBox : testListBox;
+            var target = release.IsStable ? stableListBox : testListBox;
             target.Items.Add(MakeReleaseItem(release, currentVersion));
         }
 

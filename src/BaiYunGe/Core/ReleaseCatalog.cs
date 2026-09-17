@@ -3,12 +3,14 @@ using System.Text.Json;
 
 namespace BaiYunGe.Core;
 
-/// <summary>一个已发布版本（用于版本回退列表）。</summary>
-public sealed record ReleaseEntry(string Version, string Name, DateTime PublishedAt);
+/// <summary>一个已发布版本（用于版本回退列表）。IsStable 由 GitHub release 标题是否含「稳定版」判定。</summary>
+public sealed record ReleaseEntry(string Version, string Name, DateTime PublishedAt, bool IsStable);
 
 /// <summary>
 /// 从 GitHub 拉取历史 release 列表，并按当前架构解析指定版本的安装包下载地址。
 /// 用于「版本回退」功能。网络失败返回 null，绝不抛异常影响主流程。
+/// 稳定版/测试版由 release 标题标注（含「稳定版」即稳定版），无需硬编码白名单，
+/// 标记稳定版只需改 GitHub release 标题，软件即可自动识别。
 /// </summary>
 public sealed class ReleaseCatalog
 {
@@ -17,23 +19,11 @@ public sealed class ReleaseCatalog
 
     private readonly HttpClient _httpClient;
 
-    /// <summary>
-    /// 稳定版列表（其余版本视为测试版）。后续新版本默认归为测试版，只有白云先生明确
-    /// 指示「某版本标记为稳定版」时才加入此列表。
-    /// </summary>
-    private static readonly HashSet<string> StableVersions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "3.0.5", "3.1.0", "3.2.0"
-    };
-
     public ReleaseCatalog()
     {
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("BaiYunGe-Updater");
     }
-
-    /// <summary>判断某版本是否为稳定版。</summary>
-    public static bool IsStable(string version) => StableVersions.Contains(version);
 
     /// <summary>拉取历史 release 列表（最多 30 个，按发布时间倒序）。</summary>
     public async Task<List<ReleaseEntry>?> GetReleasesAsync(CancellationToken ct = default)
@@ -57,7 +47,8 @@ public sealed class ReleaseCatalog
                 var published = DateTime.TryParse(
                     release.GetProperty("published_at").GetString(),
                     out var parsed) ? parsed : DateTime.MinValue;
-                list.Add(new ReleaseEntry(version, name, published));
+                var isStable = name.Contains("稳定版", StringComparison.OrdinalIgnoreCase);
+                list.Add(new ReleaseEntry(version, name, published, isStable));
             }
 
             return list;
