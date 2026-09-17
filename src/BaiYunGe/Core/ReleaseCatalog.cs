@@ -3,12 +3,12 @@ using System.Text.Json;
 
 namespace BaiYunGe.Core;
 
-/// <summary>一个已发布版本（用于版本回退列表）。IsStable 由 GitHub release 标题是否含「稳定版」判定。</summary>
+/// <summary>一个已发布版本（用于选择版本列表）。IsStable 由 GitHub release 标题是否含「稳定版」判定。</summary>
 public sealed record ReleaseEntry(string Version, string Name, DateTime PublishedAt, bool IsStable);
 
 /// <summary>
 /// 从 GitHub 拉取历史 release 列表，并按当前架构解析指定版本的安装包下载地址。
-/// 用于「版本回退」功能。网络失败返回 null，绝不抛异常影响主流程。
+/// 用于「选择版本」功能。网络失败返回 null，绝不抛异常影响主流程。
 /// 稳定版/测试版由 release 标题标注（含「稳定版」即稳定版），无需硬编码白名单，
 /// 标记稳定版只需改 GitHub release 标题，软件即可自动识别。
 /// </summary>

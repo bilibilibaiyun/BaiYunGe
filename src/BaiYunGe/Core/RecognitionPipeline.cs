@@ -289,13 +289,19 @@ public sealed class RecognitionPipeline : IDisposable
 
             var parsed = _parser.Parse(rawText);
             // 词典列表可能在 UI 线程被增删：枚举前先快照，避免跨线程 Collection modified。
-            var text = _dictionary.ReplaceAliases(parsed.Text, settings.Dictionary.ToList(), settings.DictionaryEnabled);
+            var dictionarySnapshot = settings.Dictionary.ToList();
+            var text = _dictionary.ReplaceAliases(parsed.Text, dictionarySnapshot, settings.DictionaryEnabled);
 
-            // 有效性检测：转写结果为空/纯标点，或 PeakRmsDb 极低（明显静音）时视为幻觉，不键入任何内容。
-            // 降噪麦克风静音时可能被 VAD 误判为语音，llama-server 对静音会幻觉出词典词汇（词典 echo）。
+            // 有效性检测：转写结果为空/纯标点、明显静音，或「词典 echo + 小声」时视为幻觉，不键入。
+            // 采样/输入增益降低门槛后，小声说话（低信噪比）容易被 ASR 幻觉成词典词汇（prompt 里的参考词汇），
+            // 后处理兜底：识别结果完整匹配词典词且音频偏弱时判为幻觉。
             var isSilentHallucination =
                 !string.IsNullOrWhiteSpace(text) && captureResult.PeakRmsDb < -55;
-            if (IsEmptyOrHallucination(text, settings.Dictionary, settings.DictionaryEnabled) || isSilentHallucination)
+            var isDictionaryEcho = IsDictionaryEcho(text, dictionarySnapshot, settings.DictionaryEnabled);
+            var isWeakSpeech = captureResult.PeakRmsDb < -45;
+            if (IsEmptyOrHallucination(text, settings.Dictionary, settings.DictionaryEnabled) ||
+                isSilentHallucination ||
+                (isDictionaryEcho && isWeakSpeech))
             {
                 CleanupWav();
                 _logger.Info($"No valid speech (empty or hallucination): peak={captureResult.PeakRmsDb:F1}dB text='{text}'");
@@ -363,6 +369,91 @@ public sealed class RecognitionPipeline : IDisposable
         }
 
         return string.IsNullOrWhiteSpace(meaningful);
+    }
+
+    /// <summary>
+    /// 词典 echo 检测：识别结果是否「像」词典里的某个词（完整匹配，或编辑距离很近——
+    /// 同音字/形近字幻觉）。用于后处理兜底：小声/低信噪比时 ASR 易把环境声幻觉成词典词汇。
+    /// </summary>
+    private static bool IsDictionaryEcho(string text, IReadOnlyList<DictionaryEntry> dictionary, bool dictionaryEnabled)
+    {
+        if (!dictionaryEnabled || dictionary is null || dictionary.Count == 0)
+        {
+            return false;
+        }
+
+        var normalized = NormalizeText(text);
+        if (string.IsNullOrEmpty(normalized))
+        {
+            return false;
+        }
+
+        foreach (var entry in dictionary)
+        {
+            foreach (var word in new[] { entry.Target, entry.Alias })
+            {
+                var w = NormalizeText(word);
+                if (string.IsNullOrEmpty(w))
+                {
+                    continue;
+                }
+
+                if (normalized.Equals(w, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                // 编辑距离阈值按词长放宽：短词 1，长词最多 2，避免把完全无关的短词误判。
+                var maxDistance = Math.Max(1, w.Length / 3);
+                if (Levenshtein(normalized, w) <= maxDistance)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static string NormalizeText(string text)
+    {
+        var result = string.Empty;
+        foreach (var c in text)
+        {
+            if (!char.IsPunctuation(c) && !char.IsSymbol(c) && !char.IsWhiteSpace(c))
+            {
+                result += c;
+            }
+        }
+
+        return result;
+    }
+
+    private static int Levenshtein(string a, string b)
+    {
+        var dp = new int[a.Length + 1, b.Length + 1];
+        for (var i = 0; i <= a.Length; i++)
+        {
+            dp[i, 0] = i;
+        }
+
+        for (var j = 0; j <= b.Length; j++)
+        {
+            dp[0, j] = j;
+        }
+
+        for (var i = 1; i <= a.Length; i++)
+        {
+            for (var j = 1; j <= b.Length; j++)
+            {
+                var cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                dp[i, j] = Math.Min(
+                    Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1),
+                    dp[i - 1, j - 1] + cost);
+            }
+        }
+
+        return dp[a.Length, b.Length];
     }
 
     private async Task<PipelineResult> CompleteErrorAsync(Exception exception)

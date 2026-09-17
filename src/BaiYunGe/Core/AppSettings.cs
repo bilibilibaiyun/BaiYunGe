@@ -51,6 +51,9 @@ public sealed class AppSettings
     /// <summary>环境采样得到的检测阈值（dB）。0 表示未采样，此时使用环境模式阈值。</summary>
     public double CalibratedThresholdDb { get; set; }
 
+    /// <summary>上次已通过「关于」按钮红点提示过的版本号。用于每个新版本只提示一次。</summary>
+    public string LastNotifiedVersion { get; set; } = string.Empty;
+
     /// <summary>无输入框时的动作，固定 clipboard。</summary>
     public string NoInputAction { get; set; } = "clipboard";
 
@@ -97,6 +100,7 @@ public sealed class AppSettings
             NoiseEnvironment = NoiseEnvironment,
             InputGainDb = InputGainDb,
             CalibratedThresholdDb = CalibratedThresholdDb,
+            LastNotifiedVersion = LastNotifiedVersion,
             NoInputAction = NoInputAction,
             OutputMethod = OutputMethod,
             DictionaryEnabled = DictionaryEnabled,

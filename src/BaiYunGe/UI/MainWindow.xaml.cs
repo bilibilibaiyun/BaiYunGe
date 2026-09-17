@@ -31,6 +31,9 @@ public partial class MainWindow : Window
     private ComboBox? _recognitionLangCombo;
     private ComboBox? _noiseEnvCombo;
     private ComboBox? _gainCombo;
+    private TextBlock? _calibrationStatus;
+    private StackPanel? _calibrationActions;
+    private double _pendingCalibrationThreshold;
     private TextBox? _shortcutBox;
     private ComboBox? _modeCombo;
     private CheckBox? _dictEnabled;
@@ -41,8 +44,11 @@ public partial class MainWindow : Window
     private ProgressBar? _modelProgress;
     private TextBlock? _modelStatus;
     private TextBlock? _updateStatus;
+    private TextBlock? _updateNotes;
     private Button? _updateButton;
     private CheckBox? _autoCheckUpdate;
+    private string? _pendingInstallUrl;
+    private string? _pendingInstallVersion;
 
     public MainWindow(
         LocalizedText text,
@@ -90,6 +96,7 @@ public partial class MainWindow : Window
         NavDictionary.Content = _text.Get("Page.Dictionary");
         NavModel.Content = _text.Get("Page.Model");
         NavCalibration.Content = _text.Get("Page.Calibration");
+        NavAbout.Content = _text.Get("Page.About");
         ShowPage(_currentPage);
     }
 
@@ -115,6 +122,9 @@ public partial class MainWindow : Window
             case "calibration":
                 ContentHost.Children.Add(BuildCalibrationPage());
                 break;
+            case "about":
+                ContentHost.Children.Add(BuildAboutPage());
+                break;
         }
     }
 
@@ -136,6 +146,7 @@ public partial class MainWindow : Window
         Apply(NavDictionary, page == "dictionary");
         Apply(NavModel, page == "model");
         Apply(NavCalibration, page == "calibration");
+        Apply(NavAbout, page == "about");
     }
 
     /// <summary>首次运行引导：直接定位到「模型」页，引导用户下载模型。</summary>
@@ -230,97 +241,10 @@ public partial class MainWindow : Window
         testButton.Click += async (_, _) => await TestMicrophoneAsync();
         panel.Children.Add(testButton);
 
-        panel.Children.Add(Label(_text.Get("General.NoiseEnv")));
-        _noiseEnvCombo = new ComboBox();
-        _noiseEnvCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.NoiseAuto"), Tag = "auto" });
-        _noiseEnvCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.NoiseQuiet"), Tag = "quiet" });
-        _noiseEnvCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.NoiseNoisy"), Tag = "noisy" });
-        _noiseEnvCombo.SelectionChanged += (_, _) =>
-        {
-            if (_noiseEnvCombo.SelectedItem is ComboBoxItem { Tag: string env } && _settings.NoiseEnvironment != env)
-            {
-                _settings.NoiseEnvironment = env;
-                Save();
-            }
-        };
-        SelectCombo(_noiseEnvCombo, _settings.NoiseEnvironment);
-        panel.Children.Add(_noiseEnvCombo);
-
-        panel.Children.Add(Label(_text.Get("General.InputGain")));
-        _gainCombo = new ComboBox();
-        foreach (var g in new[] { 0, 6, 12, 18 })
-        {
-            _gainCombo.Items.Add(new ComboBoxItem { Content = g == 0 ? _text.Get("General.GainOff") : $"+{g} dB", Tag = g.ToString() });
-        }
-        _gainCombo.SelectionChanged += (_, _) =>
-        {
-            if (_gainCombo.SelectedItem is ComboBoxItem { Tag: string gainStr } &&
-                int.TryParse(gainStr, out var gain) && _settings.InputGainDb != gain)
-            {
-                _settings.InputGainDb = gain;
-                Save();
-            }
-        };
-        SelectCombo(_gainCombo, _settings.InputGainDb.ToString());
-        panel.Children.Add(_gainCombo);
-
         var autoStart = new CheckBox { Content = _text.Get("General.AutoStart"), IsChecked = _settings.AutoStart };
         autoStart.Checked += (_, _) => { _settings.AutoStart = true; Save(); SettingsChanged?.Invoke(); };
         autoStart.Unchecked += (_, _) => { _settings.AutoStart = false; Save(); SettingsChanged?.Invoke(); };
         panel.Children.Add(autoStart);
-
-        // 更新检查区域
-        panel.Children.Add(Label(_text.Get("Update.CurrentVersion")));
-        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "2.0.4";
-        panel.Children.Add(new TextBlock { Text = version, FontSize = 14, Margin = new Thickness(0, 4, 0, 0) });
-
-        var checkButton = new Button { Content = _text.Get("Update.Check") };
-        checkButton.Click += async (_, _) => await CheckForUpdateAsync();
-        panel.Children.Add(checkButton);
-
-        var rollbackButton = new Button
-        {
-            Content = _text.Get("Update.Rollback"),
-            Margin = new Thickness(0, 6, 0, 0)
-        };
-        rollbackButton.Click += async (_, _) => await RollbackVersionAsync();
-        panel.Children.Add(rollbackButton);
-
-        _updateButton = new Button
-        {
-            Content = string.Empty,
-            Visibility = Visibility.Collapsed,
-            Margin = new Thickness(0, 6, 0, 0)
-        };
-        _updateButton.Click += async (_, _) =>
-        {
-            if (System.Windows.Application.Current is App { LatestUpdateInfo: { HasUpdate: true } info } &&
-                !string.IsNullOrWhiteSpace(info.DownloadUrl))
-            {
-                await DownloadAndInstallUpdateAsync(info.DownloadUrl, info.LatestVersion);
-            }
-        };
-        panel.Children.Add(_updateButton);
-
-        _autoCheckUpdate = new CheckBox
-        {
-            Content = _text.Get("Update.AutoCheck"),
-            IsChecked = _settings.AutoCheckUpdate,
-            Margin = new Thickness(0, 8, 0, 0)
-        };
-        _autoCheckUpdate.Checked += (_, _) => { _settings.AutoCheckUpdate = true; Save(); };
-        _autoCheckUpdate.Unchecked += (_, _) => { _settings.AutoCheckUpdate = false; Save(); };
-        panel.Children.Add(_autoCheckUpdate);
-
-        _updateStatus = new TextBlock
-        {
-            Text = string.Empty,
-            FontSize = 12,
-            Margin = new Thickness(0, 6, 0, 0),
-            TextWrapping = TextWrapping.Wrap
-        };
-        panel.Children.Add(_updateStatus);
-        RefreshUpdateStatus();
 
         return panel;
     }
@@ -436,20 +360,197 @@ public partial class MainWindow : Window
             Foreground = (System.Windows.Media.Brush)Application.Current.Resources["Theme.TextSecondary"]
         });
 
+        panel.Children.Add(Label(_text.Get("General.NoiseEnv")));
+        _noiseEnvCombo = new ComboBox();
+        _noiseEnvCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.NoiseAuto"), Tag = "auto" });
+        _noiseEnvCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.NoiseQuiet"), Tag = "quiet" });
+        _noiseEnvCombo.Items.Add(new ComboBoxItem { Content = _text.Get("General.NoiseNoisy"), Tag = "noisy" });
+        _noiseEnvCombo.SelectionChanged += (_, _) =>
+        {
+            if (_noiseEnvCombo.SelectedItem is ComboBoxItem { Tag: string env } && _settings.NoiseEnvironment != env)
+            {
+                _settings.NoiseEnvironment = env;
+                Save();
+            }
+        };
+        SelectCombo(_noiseEnvCombo, _settings.NoiseEnvironment);
+        panel.Children.Add(_noiseEnvCombo);
+
+        panel.Children.Add(Label(_text.Get("General.InputGain")));
+        _gainCombo = new ComboBox();
+        foreach (var g in new[] { 0, 6, 12, 18 })
+        {
+            _gainCombo.Items.Add(new ComboBoxItem { Content = g == 0 ? _text.Get("General.GainOff") : $"+{g} dB", Tag = g.ToString() });
+        }
+        _gainCombo.SelectionChanged += (_, _) =>
+        {
+            if (_gainCombo.SelectedItem is ComboBoxItem { Tag: string gainStr } &&
+                int.TryParse(gainStr, out var gain) && _settings.InputGainDb != gain)
+            {
+                _settings.InputGainDb = gain;
+                Save();
+            }
+        };
+        SelectCombo(_gainCombo, _settings.InputGainDb.ToString());
+        panel.Children.Add(_gainCombo);
+
         var startButton = new Button { Content = _text.Get("Calibration.Start") };
         startButton.Click += async (_, _) => await CalibrateEnvironmentAsync();
         panel.Children.Add(startButton);
 
-        var status = new TextBlock
+        _calibrationStatus = new TextBlock
         {
-            Text = _settings.CalibratedThresholdDb < 0
-                ? string.Format(_text.Get("Calibration.Current"), _settings.CalibratedThresholdDb)
-                : _text.Get("Calibration.None"),
+            Text = string.Empty,
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12,
             Margin = new Thickness(0, 8, 0, 0)
         };
-        panel.Children.Add(status);
+        panel.Children.Add(_calibrationStatus);
+
+        _calibrationActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 8, 0, 0),
+            Visibility = Visibility.Collapsed
+        };
+        var useButton = new Button { Content = _text.Get("Calibration.Use"), Width = 100 };
+        var skipButton = new Button { Content = _text.Get("Calibration.Skip"), Width = 100, Margin = new Thickness(8, 0, 0, 0) };
+        var redoButton = new Button { Content = _text.Get("Calibration.Redo"), Width = 100, Margin = new Thickness(8, 0, 0, 0) };
+        useButton.Click += (_, _) =>
+        {
+            if (_pendingCalibrationThreshold < 0)
+            {
+                _settings.CalibratedThresholdDb = _pendingCalibrationThreshold;
+                Save();
+            }
+            _pendingCalibrationThreshold = 0;
+            ShowPage("calibration");
+        };
+        skipButton.Click += (_, _) =>
+        {
+            _settings.CalibratedThresholdDb = 0;
+            Save();
+            _pendingCalibrationThreshold = 0;
+            ShowPage("calibration");
+        };
+        redoButton.Click += async (_, _) => await CalibrateEnvironmentAsync();
+        _calibrationActions.Children.Add(useButton);
+        _calibrationActions.Children.Add(skipButton);
+        _calibrationActions.Children.Add(redoButton);
+        panel.Children.Add(_calibrationActions);
+
+        UpdateCalibrationStatus();
+
+        return panel;
+    }
+
+    private void UpdateCalibrationStatus()
+    {
+        if (_calibrationStatus is null)
+        {
+            return;
+        }
+
+        if (_pendingCalibrationThreshold < 0)
+        {
+            _calibrationStatus.Text = string.Format(_text.Get("Calibration.PendingUse"), _pendingCalibrationThreshold);
+            if (_calibrationActions is not null)
+            {
+                _calibrationActions.Visibility = Visibility.Visible;
+            }
+        }
+        else if (_settings.CalibratedThresholdDb < 0)
+        {
+            _calibrationStatus.Text = string.Format(_text.Get("Calibration.Current"), _settings.CalibratedThresholdDb);
+            if (_calibrationActions is not null)
+            {
+                _calibrationActions.Visibility = Visibility.Collapsed;
+            }
+        }
+        else
+        {
+            _calibrationStatus.Text = _text.Get("Calibration.None");
+            if (_calibrationActions is not null)
+            {
+                _calibrationActions.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+
+    private UIElement BuildAboutPage()
+    {
+        var panel = new StackPanel();
+
+        panel.Children.Add(Label(_text.Get("Update.CurrentVersion")));
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "3.2.0";
+        panel.Children.Add(new TextBlock { Text = version, FontSize = 14, Margin = new Thickness(0, 4, 0, 0) });
+
+        var checkButton = new Button { Content = _text.Get("Update.Check") };
+        checkButton.Click += async (_, _) => await CheckForUpdateAsync();
+        panel.Children.Add(checkButton);
+
+        _autoCheckUpdate = new CheckBox
+        {
+            Content = _text.Get("Update.AutoCheck"),
+            IsChecked = _settings.AutoCheckUpdate,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        _autoCheckUpdate.Checked += (_, _) => { _settings.AutoCheckUpdate = true; Save(); };
+        _autoCheckUpdate.Unchecked += (_, _) => { _settings.AutoCheckUpdate = false; Save(); };
+        panel.Children.Add(_autoCheckUpdate);
+
+        _updateStatus = new TextBlock
+        {
+            Text = string.Empty,
+            FontSize = 12,
+            Margin = new Thickness(0, 8, 0, 0),
+            TextWrapping = TextWrapping.Wrap
+        };
+        panel.Children.Add(_updateStatus);
+
+        _updateNotes = new TextBlock
+        {
+            Text = string.Empty,
+            FontSize = 12,
+            Margin = new Thickness(0, 8, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            Visibility = Visibility.Collapsed
+        };
+        panel.Children.Add(_updateNotes);
+
+        _updateButton = new Button
+        {
+            Content = string.Empty,
+            Visibility = Visibility.Collapsed,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        _updateButton.Click += async (_, _) =>
+        {
+            if (_pendingInstallUrl is not null && _pendingInstallVersion is not null)
+            {
+                var url = _pendingInstallUrl;
+                var ver = _pendingInstallVersion;
+                _pendingInstallUrl = null;
+                _pendingInstallVersion = null;
+                await DownloadAndInstallUpdateAsync(url, ver);
+            }
+            else if (System.Windows.Application.Current is App { LatestUpdateInfo: { HasUpdate: true } info } &&
+                !string.IsNullOrWhiteSpace(info.DownloadUrl))
+            {
+                await DownloadAndInstallUpdateAsync(info.DownloadUrl, info.LatestVersion);
+            }
+        };
+        panel.Children.Add(_updateButton);
+
+        var selectVersionButton = new Button
+        {
+            Content = _text.Get("Update.SelectVersion"),
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        selectVersionButton.Click += async (_, _) => await SelectVersionAsync();
+        panel.Children.Add(selectVersionButton);
+
+        RefreshUpdateStatus();
 
         return panel;
     }
@@ -494,11 +595,9 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _settings.CalibratedThresholdDb = threshold;
-            Save();
+            // 暂存采样结果，刷新页面显示「是否使用当前采样」的选择，不立即保存、不弹窗。
+            _pendingCalibrationThreshold = threshold;
             ShowPage("calibration");
-            MessageBox.Show(this, string.Format(_text.Get("Calibration.Done"), threshold),
-                _text.Get("Page.Calibration"), MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception exception)
         {
@@ -851,18 +950,33 @@ public partial class MainWindow : Window
             return;
         }
 
-        var notes = info.ReleaseNotes;
-        if (notes.Length > 600)
+        // 界面内显示更新日志与「立即更新」按钮，不弹窗。自动检测只查稳定版，无需测试版风险提示。
+        _updateStatus.Text = $"{_text.Get("Update.NewVersion")}：v{info.LatestVersion}";
+        ShowUpdateNotes(info.ReleaseNotes);
+        if (_updateButton is not null && !string.IsNullOrWhiteSpace(info.DownloadUrl))
         {
-            notes = notes[..600] + "…";
+            _updateButton.Content = $"{_text.Get("Update.UpdateNow")} v{info.LatestVersion}";
+            _updateButton.Visibility = Visibility.Visible;
+        }
+    }
+
+    /// <summary>界面内显示更新日志（不弹窗）。空文本则隐藏；过长则截断。</summary>
+    private void ShowUpdateNotes(string notes)
+    {
+        if (_updateNotes is null)
+        {
+            return;
         }
 
-        var message = $"{_text.Get("Update.NewVersion")}：v{info.LatestVersion}\n\n{notes}\n\n{_text.Get("Update.Confirm")}";
-        var result = MessageBox.Show(this, message, _text.Get("Update.Title"), MessageBoxButton.YesNo, MessageBoxImage.Information);
-        if (result == MessageBoxResult.Yes && !string.IsNullOrWhiteSpace(info.DownloadUrl))
+        if (string.IsNullOrWhiteSpace(notes))
         {
-            await DownloadAndInstallUpdateAsync(info.DownloadUrl, info.LatestVersion);
+            _updateNotes.Visibility = Visibility.Collapsed;
+            return;
         }
+
+        var display = notes.Length > 800 ? notes[..800] + "…" : notes;
+        _updateNotes.Text = display;
+        _updateNotes.Visibility = Visibility.Visible;
     }
 
     /// <summary>根据启动时静默检测的缓存结果刷新更新状态显示。</summary>
@@ -887,10 +1001,17 @@ public partial class MainWindow : Window
         else if (app.LatestUpdateInfo is { HasUpdate: true } info)
         {
             _updateStatus.Text = $"{_text.Get("Update.NewVersion")}：v{info.LatestVersion}";
+            ShowUpdateNotes(info.ReleaseNotes);
             if (_updateButton is not null)
             {
                 _updateButton.Content = $"{_text.Get("Update.UpdateNow")} v{info.LatestVersion}";
                 _updateButton.Visibility = Visibility.Visible;
+            }
+
+            // 红点：新版本与上次已提示的版本不同时，显示红点（每个新版本只提示一次）。
+            if (!string.Equals(info.LatestVersion, _settings.LastNotifiedVersion, StringComparison.OrdinalIgnoreCase))
+            {
+                ShowUpdateBadge();
             }
         }
         else if (app.LatestUpdateInfo is not null)
@@ -902,6 +1023,22 @@ public partial class MainWindow : Window
         {
             _updateStatus.Text = _text.Get("Update.Failed");
             HideUpdateButton();
+        }
+    }
+
+    private void ShowUpdateBadge()
+    {
+        NavAboutBadge.Visibility = Visibility.Visible;
+    }
+
+    private void HideUpdateBadge()
+    {
+        NavAboutBadge.Visibility = Visibility.Collapsed;
+        // 记录当前已提示的版本号，使该版本的红点不再回归。
+        if (System.Windows.Application.Current is App { LatestUpdateInfo: { HasUpdate: true } info })
+        {
+            _settings.LastNotifiedVersion = info.LatestVersion;
+            Save();
         }
     }
 
@@ -920,8 +1057,8 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(RefreshUpdateStatus);
     }
 
-    /// <summary>版本回退：拉取历史版本列表，让用户选择后下载对应版本安装包覆盖安装。</summary>
-    private async Task RollbackVersionAsync()
+    /// <summary>选择版本：拉取历史版本列表（含测试版），用户选择后下载对应安装包覆盖安装。</summary>
+    private async Task SelectVersionAsync()
     {
         try
         {
@@ -950,20 +1087,20 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var message = _text.Format("Update.RollbackConfirm", selected.Version);
-            var confirm = MessageBox.Show(this, message, _text.Get("Update.Rollback"),
-                MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (confirm != MessageBoxResult.Yes)
+            // 界面内显示确认信息 + 「确认安装」按钮（不弹窗）。测试版在日志第一行提示风险。
+            _pendingInstallUrl = url;
+            _pendingInstallVersion = selected.Version;
+            _updateStatus.Text = _text.Format("Update.InstallConfirm", selected.Version);
+            ShowUpdateNotes(selected.IsStable ? string.Empty : _text.Get("Update.TestRisk"));
+            if (_updateButton is not null)
             {
-                _updateStatus.Text = _text.Get("Update.UpToDate");
-                return;
+                _updateButton.Content = $"{_text.Get("Update.InstallNow")} v{selected.Version}";
+                _updateButton.Visibility = Visibility.Visible;
             }
-
-            await DownloadAndInstallUpdateAsync(url, selected.Version);
         }
         catch (Exception exception)
         {
-            _logger.Error("Rollback failed.", exception);
+            _logger.Error("Select version failed.", exception);
             _updateStatus!.Text = _text.Get("Update.Failed");
         }
     }
@@ -975,7 +1112,7 @@ public partial class MainWindow : Window
 
         var window = new Window
         {
-            Title = _text.Get("Update.Rollback"),
+            Title = _text.Get("Update.SelectVersion"),
             Width = 420,
             Height = 560,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -991,7 +1128,7 @@ public partial class MainWindow : Window
 
         var hint = new TextBlock
         {
-            Text = _text.Get("Update.RollbackHint"),
+            Text = _text.Get("Update.SelectHint"),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 10)
         };
@@ -1055,7 +1192,7 @@ public partial class MainWindow : Window
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         var cancelButton = new Button { Content = _text.Get("Update.Cancel"), Width = 90, Margin = new Thickness(0, 0, 8, 0) };
-        var rollbackButton = new Button { Content = _text.Get("Update.RollbackAction"), Width = 120 };
+        var rollbackButton = new Button { Content = _text.Get("Update.SelectAction"), Width = 120 };
         cancelButton.Click += (_, _) => { tcs.TrySetResult(null); window.Close(); };
         rollbackButton.Click += (_, _) =>
         {
@@ -1128,9 +1265,15 @@ public partial class MainWindow : Window
                 }
             }
 
-            // 明确提示用户：软件即将退出，随后可能出现 UAC 授权窗口（安装包需管理员权限覆盖安装）。
-            MessageBox.Show(this, _text.Get("Update.ReadyToInstall"), _text.Get("Update.Title"),
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            // 界面内显示「即将退出 + UAC 提示」（不弹窗），稍候片刻后退出 + 覆盖安装。
+            _updateStatus!.Text = _text.Get("Update.ReadyToInstall");
+            if (_updateNotes is not null)
+            {
+                _updateNotes.Text = _text.Get("Update.UacHint");
+                _updateNotes.Visibility = Visibility.Visible;
+            }
+
+            await Task.Delay(1500);
 
             // 写延迟启动脚本：等待软件完全退出后，再启动安装包静默覆盖安装。
             // 用 UTF-8 BOM 写入，避免中文用户名路径（%TEMP% 含中文）被 cmd 按 ANSI 解码乱码。
@@ -1225,6 +1368,13 @@ public partial class MainWindow : Window
     private void NavModel_Click(object sender, RoutedEventArgs e) => ShowPage("model");
 
     private void NavCalibration_Click(object sender, RoutedEventArgs e) => ShowPage("calibration");
+
+    private void NavAbout_Click(object sender, RoutedEventArgs e)
+    {
+        ShowPage("about");
+        // 进入关于界面后，红点消失（每个新版本只提示一次）。
+        HideUpdateBadge();
+    }
 
     protected override void OnClosing(CancelEventArgs e)
     {

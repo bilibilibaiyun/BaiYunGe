@@ -320,6 +320,13 @@
                         Style="{StaticResource NavButtonStyle}"/>
                 <Button x:Name="NavCalibration" Content="环境采样" Click="NavCalibration_Click"
                         Style="{StaticResource NavButtonStyle}"/>
+                <Grid>
+                    <Button x:Name="NavAbout" Content="关于" Click="NavAbout_Click"
+                            Style="{StaticResource NavButtonStyle}"/>
+                    <Ellipse x:Name="NavAboutBadge" Width="8" Height="8" Fill="#E5484D"
+                             HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
+                             Visibility="Collapsed"/>
+                </Grid>
             </StackPanel>
         </Border>
 
