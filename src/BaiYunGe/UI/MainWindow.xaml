@@ -5,7 +5,7 @@
         Width="760" Height="560"
         MinWidth="680" MinHeight="480"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource Theme.WindowBg}"
+        Background="Transparent"
         Foreground="{DynamicResource Theme.TextPrimary}"
         Icon="pack://siteoforigin:,,,/Assets/app-square.png">
     <Window.Resources>
@@ -302,7 +302,7 @@
         </Style>
     </Window.Resources>
 
-    <Grid>
+    <Grid Background="{DynamicResource Theme.WindowBg}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="168"/>
             <ColumnDefinition Width="*"/>

@@ -603,25 +603,25 @@ public partial class App : Application
 
         if (dark)
         {
-            Set("Theme.WindowBg", "#15151A");
-            Set("Theme.SidebarBg", "#1C1C24");
-            Set("Theme.CardBg", "#242430");
+            Set("Theme.WindowBg", "#B015151A");
+            Set("Theme.SidebarBg", "#B01C1C24");
+            Set("Theme.CardBg", "#D9242430");
             Set("Theme.Accent", "#4D8BFF");
             Set("Theme.TextPrimary", "#EEEEF2");
             Set("Theme.TextSecondary", "#8A8A9E");
-            Set("Theme.Border", "#33333F");
-            Set("Theme.Hover", "#303040");
+            Set("Theme.Border", "#5533333F");
+            Set("Theme.Hover", "#66303040");
         }
         else
         {
-            Set("Theme.WindowBg", "#F5F6FA");
-            Set("Theme.SidebarBg", "#EBEDF3");
-            Set("Theme.CardBg", "#FFFFFF");
+            Set("Theme.WindowBg", "#B0F5F6FA");
+            Set("Theme.SidebarBg", "#B0EBEDF3");
+            Set("Theme.CardBg", "#D9FFFFFF");
             Set("Theme.Accent", "#3B7BEB");
             Set("Theme.TextPrimary", "#1A1C24");
             Set("Theme.TextSecondary", "#6A6E7C");
-            Set("Theme.Border", "#D9DCE3");
-            Set("Theme.Hover", "#E3E6ED");
+            Set("Theme.Border", "#55D9DCE3");
+            Set("Theme.Hover", "#66E3E6ED");
         }
     }
 
