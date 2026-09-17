@@ -83,6 +83,10 @@ public sealed class LocalizedText
         ["Dict.Target"] = ("目标词", "Target"),
         ["Dict.Add"] = ("添加", "Add"),
         ["Dict.Remove"] = ("删除", "Remove"),
+        ["Dict.RecordVoice"] = ("录音念词", "Record voice"),
+        ["Dict.RecordPrompt"] = ("点击确定后，请念出「{0}」这个词（约 2 秒）。", "After clicking OK, please say the word \"{0}\" (about 2 seconds)."),
+        ["Dict.RecordDone"] = ("录音模板已保存。", "Voice template saved."),
+        ["Dict.RecordFailed"] = ("录音失败：请确保说话时长足够后重试。", "Recording failed: please ensure you spoke long enough and retry."),
 
         ["Overlay.Listening"] = ("倾听中…", "Listening…"),
         ["Overlay.Transcribing"] = ("转化中…", "Transcribing…"),

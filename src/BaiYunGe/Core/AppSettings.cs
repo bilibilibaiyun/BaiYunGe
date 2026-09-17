@@ -7,6 +7,9 @@ public sealed record DictionaryEntry
     public string Alias { get; init; } = string.Empty;
 
     public string Target { get; init; } = string.Empty;
+
+    /// <summary>录音模板路径（用户录音念该词的 MFCC 特征文件，JSON）。空表示未录音。</summary>
+    public string VoicePath { get; init; } = string.Empty;
 }
 
 public sealed class AppSettings
@@ -104,7 +107,7 @@ public sealed class AppSettings
             NoInputAction = NoInputAction,
             OutputMethod = OutputMethod,
             DictionaryEnabled = DictionaryEnabled,
-            Dictionary = Dictionary.Select(e => new DictionaryEntry { Alias = e.Alias, Target = e.Target }).ToList(),
+            Dictionary = Dictionary.Select(e => new DictionaryEntry { Alias = e.Alias, Target = e.Target, VoicePath = e.VoicePath }).ToList(),
             ModelDirectory = ModelDirectory,
             ModelQuant = ModelQuant,
             ServerPort = ServerPort,

@@ -46,7 +46,7 @@ internal static class SpectrumAnalyzer
     }
 
     /// <summary>原地 Radix-2 Cooley-Tukey FFT（real/imag 为输入输出）。</summary>
-    private static void Fft(double[] real, double[] imag)
+    internal static void Fft(double[] real, double[] imag)
     {
         var n = real.Length;
 

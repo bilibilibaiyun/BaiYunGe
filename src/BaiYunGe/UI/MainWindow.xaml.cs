@@ -48,6 +48,7 @@ public partial class MainWindow : Window
     private TextBlock? _updateNotes;
     private Button? _updateButton;
     private CheckBox? _autoCheckUpdate;
+    private ProgressBar? _updateProgress;
     private string? _pendingInstallUrl;
     private string? _pendingInstallVersion;
 
@@ -345,7 +346,87 @@ public partial class MainWindow : Window
         };
         panel.Children.Add(removeButton);
 
+        var recordButton = new Button { Content = _text.Get("Dict.RecordVoice"), Margin = new Thickness(0, 4, 0, 0) };
+        recordButton.Click += async (_, _) =>
+        {
+            if (_dictList.SelectedItem is DictionaryEntry entry)
+            {
+                await RecordVoiceTemplateAsync(entry);
+            }
+        };
+        panel.Children.Add(recordButton);
+
         return panel;
+    }
+
+    /// <summary>录音念词：录下用户念该词的音频，提取 MFCC 模板保存，供识别时声纹比对。</summary>
+    private async Task RecordVoiceTemplateAsync(DictionaryEntry entry)
+    {
+        var tempWav = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"baiyunge-voice-{Guid.NewGuid():N}.wav");
+        using var capture = new AudioCaptureService();
+        try
+        {
+            MessageBox.Show(this, string.Format(_text.Get("Dict.RecordPrompt"), entry.Target),
+                _text.Get("Dict.RecordVoice"), MessageBoxButton.OK, MessageBoxImage.Information);
+
+            // 录 2 秒（静音不停止）。
+            await capture.StartAsync(
+                _settings.MicDeviceId, tempWav, 2, 0,
+                _settings.VadSensitivity, _settings.NoiseEnvironment, _settings.InputGainDb,
+                _settings.CalibratedThresholdDb, CancellationToken.None);
+
+            var samples = MfccExtractor.ReadWav(tempWav);
+            var mfcc = MfccExtractor.Extract(samples);
+            if (mfcc.Length == 0)
+            {
+                MessageBox.Show(this, _text.Get("Dict.RecordFailed"),
+                    _text.Get("Dict.RecordVoice"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var templatePath = GetVoiceTemplatePath(entry);
+            VoiceTemplateStore.Save(templatePath, mfcc);
+
+            var index = _settings.Dictionary.IndexOf(entry);
+            if (index >= 0)
+            {
+                _settings.Dictionary[index] = entry with { VoicePath = templatePath };
+            }
+
+            Save();
+            RefreshDictList();
+            MessageBox.Show(this, _text.Get("Dict.RecordDone"),
+                _text.Get("Dict.RecordVoice"), MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message,
+                _text.Get("Dict.RecordVoice"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            try
+            {
+                if (System.IO.File.Exists(tempWav))
+                {
+                    System.IO.File.Delete(tempWav);
+                }
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    /// <summary>生成词的录音模板路径（按 Target+Alias 哈希，存数据目录 VoiceTemplates 下）。</summary>
+    private static string GetVoiceTemplatePath(DictionaryEntry entry)
+    {
+        var dir = System.IO.Path.Combine(AppPaths.DefaultDataRoot, "VoiceTemplates");
+        Directory.CreateDirectory(dir);
+        var key = entry.Target + "|" + entry.Alias;
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(key)))[..16].ToLowerInvariant();
+        return System.IO.Path.Combine(dir, hash + ".json");
     }
 
     private UIElement BuildCalibrationPage()
@@ -545,6 +626,16 @@ public partial class MainWindow : Window
             Visibility = Visibility.Collapsed
         };
         panel.Children.Add(_updateNotes);
+
+        _updateProgress = new ProgressBar
+        {
+            Minimum = 0,
+            Maximum = 100,
+            Height = 6,
+            Margin = new Thickness(0, 8, 0, 0),
+            Visibility = Visibility.Collapsed
+        };
+        panel.Children.Add(_updateProgress);
 
         _updateButton = new Button
         {
@@ -1010,13 +1101,21 @@ public partial class MainWindow : Window
     /// <summary>根据启动时静默检测的缓存结果刷新更新状态显示。</summary>
     private void RefreshUpdateStatus()
     {
-        if (_updateStatus is null)
+        var app = System.Windows.Application.Current as App;
+        if (app is null)
         {
             return;
         }
 
-        var app = System.Windows.Application.Current as App;
-        if (app is null)
+        // 红点独立于「关于」页面是否已构建：检测到新稳定版且该版本尚未提示过，就显示红点。
+        if (app.IsUpdateCheckCompleted && app.LatestUpdateInfo is { HasUpdate: true } info &&
+            !string.Equals(info.LatestVersion, _settings.LastNotifiedVersion, StringComparison.OrdinalIgnoreCase))
+        {
+            ShowUpdateBadge();
+        }
+
+        // 状态文本与更新按钮（依赖「关于」页面控件）。
+        if (_updateStatus is null)
         {
             return;
         }
@@ -1026,20 +1125,15 @@ public partial class MainWindow : Window
             _updateStatus.Text = _text.Get("Update.Checking");
             HideUpdateButton();
         }
-        else if (app.LatestUpdateInfo is { HasUpdate: true } info)
+        else if (app.LatestUpdateInfo is { HasUpdate: true })
         {
-            _updateStatus.Text = $"{_text.Get("Update.NewVersion")}：v{info.LatestVersion}";
-            ShowUpdateNotes(info.ReleaseNotes);
+            var updateInfo = app.LatestUpdateInfo;
+            _updateStatus.Text = $"{_text.Get("Update.NewVersion")}：v{updateInfo.LatestVersion}";
+            ShowUpdateNotes(updateInfo.ReleaseNotes);
             if (_updateButton is not null)
             {
-                _updateButton.Content = $"{_text.Get("Update.UpdateNow")} v{info.LatestVersion}";
+                _updateButton.Content = $"{_text.Get("Update.UpdateNow")} v{updateInfo.LatestVersion}";
                 _updateButton.Visibility = Visibility.Visible;
-            }
-
-            // 红点：新版本与上次已提示的版本不同时，显示红点（每个新版本只提示一次）。
-            if (!string.Equals(info.LatestVersion, _settings.LastNotifiedVersion, StringComparison.OrdinalIgnoreCase))
-            {
-                ShowUpdateBadge();
             }
         }
         else if (app.LatestUpdateInfo is not null)
@@ -1273,6 +1367,12 @@ public partial class MainWindow : Window
                 }
 
                 var total = response.Content.Headers.ContentLength ?? 0;
+                // 显示进度条，让用户看到下载进度反馈。
+                if (_updateProgress is not null)
+                {
+                    _updateProgress.Visibility = Visibility.Visible;
+                }
+
                 using (var stream = await response.Content.ReadAsStreamAsync())
                 using (var file = new FileStream(installerPath, FileMode.Create, FileAccess.Write, FileShare.None))
                 {
@@ -1286,11 +1386,20 @@ public partial class MainWindow : Window
                         if (total > 0)
                         {
                             _updateStatus!.Text = _text.Format("Update.Downloading", BytesToText(received), BytesToText(total));
+                            if (_updateProgress is not null)
+                            {
+                                _updateProgress.Value = received * 100.0 / total;
+                            }
                         }
                     }
 
                     await file.FlushAsync();
                 }
+            }
+
+            if (_updateProgress is not null)
+            {
+                _updateProgress.Visibility = Visibility.Collapsed;
             }
 
             // 界面内显示「即将退出 + UAC 提示」（不弹窗），稍候片刻后退出 + 覆盖安装。

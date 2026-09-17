@@ -31,6 +31,12 @@ public sealed class AppPaths
     /// <summary>默认模型目录（用户可改）。</summary>
     public string DefaultModels { get; }
 
+    /// <summary>数据根目录（配置/日志/模型/录音模板等）。</summary>
+    public string DataRoot => _dataRoot;
+
+    /// <summary>默认数据根目录（静态访问，供无 AppPaths 实例的场景使用）。</summary>
+    public static string DefaultDataRoot => ResolveDataRoot(null);
+
     /// <summary>程序目录（exe 所在）。</summary>
     public static string AppDirectory =>
         Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)

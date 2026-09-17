@@ -295,9 +295,9 @@ public sealed class RecognitionPipeline : IDisposable
             // 词典列表可能在 UI 线程被增删：枚举前先快照，避免跨线程 Collection modified。
             var dictionarySnapshot = settings.Dictionary.ToList();
             var text = _dictionary.ReplaceAliases(parsed.Text, dictionarySnapshot, settings.DictionaryEnabled);
-            // 谐音/形近字纠正：识别结果与词典词仅差 1 字（谐音错误，如「瑞星」→「瑞幸」）时
-            // 纠正为目标词，弥补移除热词偏置后词典词识别变差的问题。
-            text = CorrectHomophone(text, dictionarySnapshot, settings.DictionaryEnabled);
+            // 谐音/形近字纠正：识别结果与词典词仅差 1 字时纠正为目标词；若该词有录音模板，
+            // 用声纹比对（MFCC+DTW）确认用户真的念了这个词，既纠谐音又防幻觉。
+            text = CorrectHomophone(text, dictionarySnapshot, settings.DictionaryEnabled, captureResult.WavPath);
 
             // 有效性检测：转写结果为空/纯标点，或「词典 echo + 接近噪声地板」时视为幻觉，不键入。
             // 用相对噪声地板的余量判断「太小声/静音」，不受输入增益影响（增益会同时抬升峰值与噪声地板）。
@@ -468,9 +468,10 @@ public sealed class RecognitionPipeline : IDisposable
 
     /// <summary>
     /// 谐音/形近字纠正：识别结果与词典词仅差 1 字（谐音错误，如「瑞星」→「瑞幸」）时，
-    /// 纠正为目标词。用于弥补移除热词偏置后词典词识别变差（谐音错误）的问题。
+    /// 纠正为目标词。若该词有录音模板（用户录过音念这个词），则额外做声纹比对（MFCC+DTW）
+    /// 确认用户真的念了它，未匹配则放弃纠正——同时解决谐音与幻觉。
     /// </summary>
-    private static string CorrectHomophone(string text, IReadOnlyList<DictionaryEntry> dictionary, bool dictionaryEnabled)
+    private static string CorrectHomophone(string text, IReadOnlyList<DictionaryEntry> dictionary, bool dictionaryEnabled, string wavPath)
     {
         if (!dictionaryEnabled || dictionary is null || dictionary.Count == 0)
         {
@@ -496,16 +497,54 @@ public sealed class RecognitionPipeline : IDisposable
                 }
 
                 var dist = Levenshtein(normalized, w);
-                if (dist <= 1 && dist < bestDistance)
+                if (dist > 1 || dist >= bestDistance)
                 {
-                    bestDistance = dist;
-                    bestTarget = entry.Target;
+                    continue;
                 }
+
+                // 有录音模板时，做声纹比对确认；匹配才纠正。无模板则直接按编辑距离纠正。
+                if (!string.IsNullOrWhiteSpace(entry.VoicePath) &&
+                    !VoiceTemplateMatches(wavPath, entry.VoicePath))
+                {
+                    continue;
+                }
+
+                bestDistance = dist;
+                bestTarget = entry.Target;
             }
         }
 
         return bestDistance <= 1 ? bestTarget : text;
     }
+
+    /// <summary>声纹比对：当前录音 MFCC 与词模板 DTW 距离小于阈值视为匹配。</summary>
+    private static bool VoiceTemplateMatches(string wavPath, string templatePath)
+    {
+        try
+        {
+            var template = VoiceTemplateStore.Load(templatePath);
+            if (template is null || template.Length == 0 || string.IsNullOrWhiteSpace(wavPath) || !File.Exists(wavPath))
+            {
+                return false;
+            }
+
+            var samples = MfccExtractor.ReadWav(wavPath);
+            var current = MfccExtractor.Extract(samples);
+            if (current.Length == 0)
+            {
+                return false;
+            }
+
+            var distance = MfccExtractor.DtwDistance(current, template);
+            return distance < DtwMatchThreshold;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private const double DtwMatchThreshold = 40;
 
     private async Task<PipelineResult> CompleteErrorAsync(Exception exception)
     {
