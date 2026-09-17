@@ -315,6 +315,8 @@
                         Style="{StaticResource NavButtonStyle}"/>
                 <Button x:Name="NavModel" Content="本地模型" Click="NavModel_Click"
                         Style="{StaticResource NavButtonStyle}"/>
+                <Button x:Name="NavCalibration" Content="环境采样" Click="NavCalibration_Click"
+                        Style="{StaticResource NavButtonStyle}"/>
             </StackPanel>
         </Border>
 

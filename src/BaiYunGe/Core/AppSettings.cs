@@ -48,6 +48,9 @@ public sealed class AppSettings
     /// <summary>输入增益（dB），补偿降噪麦克风输出电平偏低。0~18，默认 0（不增益）。</summary>
     public int InputGainDb { get; set; }
 
+    /// <summary>环境采样得到的检测阈值（dB）。0 表示未采样，此时使用环境模式阈值。</summary>
+    public double CalibratedThresholdDb { get; set; }
+
     /// <summary>无输入框时的动作，固定 clipboard。</summary>
     public string NoInputAction { get; set; } = "clipboard";
 
@@ -93,6 +96,7 @@ public sealed class AppSettings
             VadSensitivity = VadSensitivity,
             NoiseEnvironment = NoiseEnvironment,
             InputGainDb = InputGainDb,
+            CalibratedThresholdDb = CalibratedThresholdDb,
             NoInputAction = NoInputAction,
             OutputMethod = OutputMethod,
             DictionaryEnabled = DictionaryEnabled,

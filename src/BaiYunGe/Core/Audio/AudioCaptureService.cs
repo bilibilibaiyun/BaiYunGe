@@ -57,6 +57,7 @@ public sealed class AudioCaptureService : IDisposable
         int vadSensitivity,
         string environment,
         int gainDb,
+        double calibratedThresholdDb,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -66,7 +67,7 @@ public sealed class AudioCaptureService : IDisposable
         // 避免阻塞 UI 线程导致整个软件卡死（此前只把 StartRecording 移到了后台，
         // 但 Resolve 与 CaptureSession 构造仍在 UI 线程，仍会卡死）。
         return Task.Run(
-            () => StartCoreAsync(deviceId, outputPath, maxRecordSeconds, silenceStopMs, vadSensitivity, environment, gainDb, cancellationToken),
+            () => StartCoreAsync(deviceId, outputPath, maxRecordSeconds, silenceStopMs, vadSensitivity, environment, gainDb, calibratedThresholdDb, cancellationToken),
             cancellationToken);
     }
 
@@ -78,6 +79,7 @@ public sealed class AudioCaptureService : IDisposable
         int vadSensitivity,
         string environment,
         int gainDb,
+        double calibratedThresholdDb,
         CancellationToken cancellationToken)
     {
         CaptureSession session;
@@ -89,7 +91,7 @@ public sealed class AudioCaptureService : IDisposable
             }
 
             var device = _deviceEnumerator.Resolve(deviceId);
-            var vad = new VoiceActivityDetector(vadSensitivity, silenceStopMs, environment);
+            var vad = new VoiceActivityDetector(vadSensitivity, silenceStopMs, environment, calibratedThresholdDb);
             session = new CaptureSession(
                 device,
                 outputPath,

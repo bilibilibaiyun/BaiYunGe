@@ -89,6 +89,7 @@ public partial class MainWindow : Window
         NavShortcut.Content = _text.Get("Page.Shortcut");
         NavDictionary.Content = _text.Get("Page.Dictionary");
         NavModel.Content = _text.Get("Page.Model");
+        NavCalibration.Content = _text.Get("Page.Calibration");
         ShowPage(_currentPage);
     }
 
@@ -109,6 +110,9 @@ public partial class MainWindow : Window
                 break;
             case "model":
                 ContentHost.Children.Add(BuildModelPage());
+                break;
+            case "calibration":
+                ContentHost.Children.Add(BuildCalibrationPage());
                 break;
         }
     }
@@ -398,6 +402,91 @@ public partial class MainWindow : Window
         return panel;
     }
 
+    private UIElement BuildCalibrationPage()
+    {
+        var panel = new StackPanel();
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = _text.Get("Calibration.Hint"),
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 13,
+            Margin = new Thickness(0, 0, 0, 10),
+            Foreground = (System.Windows.Media.Brush)Application.Current.Resources["Theme.TextSecondary"]
+        });
+
+        var startButton = new Button { Content = _text.Get("Calibration.Start") };
+        startButton.Click += async (_, _) => await CalibrateEnvironmentAsync();
+        panel.Children.Add(startButton);
+
+        var status = new TextBlock
+        {
+            Text = _settings.CalibratedThresholdDb < 0
+                ? string.Format(_text.Get("Calibration.Current"), _settings.CalibratedThresholdDb)
+                : _text.Get("Calibration.None"),
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        panel.Children.Add(status);
+
+        return panel;
+    }
+
+    private async Task CalibrateEnvironmentAsync()
+    {
+        var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"baiyunge-calib-{Guid.NewGuid():N}.wav");
+        try
+        {
+            MessageBox.Show(this, _text.Get("Calibration.Prompt"), _text.Get("Page.Calibration"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+
+            // 录 5 秒基准音频（静音自动停止关闭，录满 5 秒）。
+            await _audioCapture.StartAsync(
+                _settings.MicDeviceId,
+                tempPath,
+                5,
+                0,
+                _settings.VadSensitivity,
+                _settings.NoiseEnvironment,
+                _settings.InputGainDb,
+                0,
+                CancellationToken.None);
+
+            var threshold = EnvironmentCalibrator.AnalyzeThreshold(tempPath);
+            if (threshold >= 0)
+            {
+                MessageBox.Show(this, _text.Get("Calibration.Failed"), _text.Get("Page.Calibration"),
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _settings.CalibratedThresholdDb = threshold;
+            Save();
+            ShowPage("calibration");
+            MessageBox.Show(this, string.Format(_text.Get("Calibration.Done"), threshold),
+                _text.Get("Page.Calibration"), MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, _text.Get("Page.Calibration"),
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            try
+            {
+                if (System.IO.File.Exists(tempPath))
+                {
+                    System.IO.File.Delete(tempPath);
+                }
+            }
+            catch
+            {
+            }
+        }
+    }
+
     private UIElement BuildModelPage()
     {
         var panel = new StackPanel();
@@ -573,6 +662,7 @@ public partial class MainWindow : Window
                 _settings.VadSensitivity,
                 _settings.NoiseEnvironment,
                 _settings.InputGainDb,
+                _settings.CalibratedThresholdDb,
                 CancellationToken.None);
 
             var text = result.HasSpeech
@@ -1074,6 +1164,8 @@ public partial class MainWindow : Window
     private void NavDictionary_Click(object sender, RoutedEventArgs e) => ShowPage("dictionary");
 
     private void NavModel_Click(object sender, RoutedEventArgs e) => ShowPage("model");
+
+    private void NavCalibration_Click(object sender, RoutedEventArgs e) => ShowPage("calibration");
 
     protected override void OnClosing(CancelEventArgs e)
     {

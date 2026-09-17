@@ -127,6 +127,7 @@ public sealed class RecognitionPipeline : IDisposable
                 settings.VadSensitivity,
                 settings.NoiseEnvironment,
                 settings.InputGainDb,
+                settings.CalibratedThresholdDb,
                 _captureCancellation.Token);
 
             await Task.Delay(50, cancellationToken).ConfigureAwait(false);
