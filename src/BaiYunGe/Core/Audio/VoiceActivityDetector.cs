@@ -53,12 +53,12 @@ public sealed class VoiceActivityDetector
             ? double.PositiveInfinity
             : Math.Max(200, silenceStopMs);
 
-        // 环境采样阈值优先：用户录了基准音频后，用它作为阈值下限（已含噪声地板与语音
-        // 峰值的中点信息），偏移取小值让动态自适应只需微调。
+        // 环境采样阈值优先：采样阈值已包含「噪声地板 + 语音峰值差 × 45%」的中点信息，
+        // 直接作为阈值下限使用（偏移 0），不再额外抬升，否则小声说话会被误判为无语音。
         if (calibratedThresholdDb < 0)
         {
             _speechFloorDb = calibratedThresholdDb;
-            _noiseOffsetDb = 6;
+            _noiseOffsetDb = 0;
             _thresholdCeilingDb = -20;
             return;
         }

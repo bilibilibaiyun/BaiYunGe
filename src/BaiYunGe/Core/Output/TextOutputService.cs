@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Windows;
 
 namespace BaiYunGe.Core.Output;
@@ -92,27 +93,53 @@ public sealed class TextOutputService
 
     private async Task<OutputResult> CopyToClipboardAsync(string text, CancellationToken cancellationToken)
     {
-        // 剪贴板被外部进程（远程桌面/剪贴板工具）占用时 OpenClipboard 可能阻塞较久，
-        // 重试过多会让浮窗卡在「识别中」十几秒。用较短间隔重试 4 次（约 1 秒内出结果），
-        // 快速失败并明确提示，比长时间卡住更友好。
-        for (var attempt = 0; attempt < 4; attempt++)
+        // 剪贴板被外部进程（远程桌面/剪贴板工具）占用时 OpenClipboard 可能阻塞很久。
+        // 在独立 STA 线程限时执行（每次最多 1 秒），避免阻塞 UI 线程导致浮窗卡在「识别中」；
+        // 重试 2 次给剪贴板释放的机会，失败快速返回并明确提示。
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            try
+            if (TrySetClipboardText(text, 1000))
             {
-                Clipboard.SetText(text);
                 _logger.Info("Text copied to clipboard.");
                 return OutputResult.CopiedToClipboard;
             }
-            catch (Exception exception)
-            {
-                _logger.Warn($"Clipboard busy (attempt {attempt + 1}): {exception.Message}");
-            }
 
-            // 保持当前同步上下文（UI/STA 线程），否则重试会在线程池 MTA 线程执行导致 OLE/剪贴板失败。
-            await Task.Delay(100, cancellationToken);
+            _logger.Warn($"Clipboard busy (attempt {attempt + 1}).");
+            await Task.Delay(200, cancellationToken);
         }
 
         _logger.Error("Failed to copy text to clipboard after retries.");
         return OutputResult.Failed;
+    }
+
+    /// <summary>
+    /// 在独立 STA 线程执行剪贴板写入并限时。超时（剪贴板仍被占用）返回 false，
+    /// 后台线程继续阻塞但作为 background 线程不影响 UI。
+    /// </summary>
+    private static bool TrySetClipboardText(string text, int timeoutMs)
+    {
+        var result = false;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                result = true;
+            }
+            catch
+            {
+                result = false;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
+        thread.Start();
+
+        if (!thread.Join(timeoutMs))
+        {
+            return false;
+        }
+
+        return result;
     }
 }

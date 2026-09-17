@@ -276,10 +276,11 @@ public sealed class RecognitionPipeline : IDisposable
                 settings.InferenceDevice,
                 _captureCancellation?.Token ?? CancellationToken.None).ConfigureAwait(false);
 
-            // 动态词典：音频「太小声/接近噪声地板」时不用词典做参考词汇，从源头掐断词典幻觉
-            // （小声/低信噪比时 ASR 易把词典词汇当幻觉抄进结果）。余量 >= 6dB 才启用词典。
+            // 词典热词偏置（prompt 注入）已彻底移除：它是词典幻觉的根源（ASR 对小声/静音
+            // 音频会把「参考词汇」抄进结果）。词典的别名替换仍由后处理 ReplaceAliases 完成，
+            // 不受影响。识别时不注入任何词典 prompt。
             var speechMargin = captureResult.PeakRmsDb - captureResult.NoiseFloorDb;
-            var prompt = BuildPrompt(settings, speechMargin >= 6);
+            var prompt = string.Empty;
             // 识别语言独立于界面语言，默认 auto 由模型自动检测中英文。
             var language = string.IsNullOrWhiteSpace(settings.RecognitionLanguage)
                 ? "auto"
@@ -494,18 +495,6 @@ public sealed class RecognitionPipeline : IDisposable
         }, null);
 
         return await tcs.Task.ConfigureAwait(false);
-    }
-
-    private string BuildPrompt(AppSettings settings, bool includeDictionary)
-    {
-        if (!settings.DictionaryEnabled || !includeDictionary)
-        {
-            return string.Empty;
-        }
-
-        // 词典列表可能在 UI 线程被增删：枚举前先快照，避免跨线程 Collection modified。
-        var words = _dictionary.BuildPrompt(settings.Dictionary.ToList(), true);
-        return string.IsNullOrWhiteSpace(words) ? string.Empty : $"{settings.PromptPrefix}{words}";
     }
 
     private void CleanupWav()
